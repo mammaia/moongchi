@@ -137,3 +137,69 @@ test('카메라·앨범 버튼이 방 물건을 누르는 자리를 가리지 �
     expect(inside, `${id} 누르는 자리가 버튼에 가려짐`).toBe(false);
   }
 });
+
+test('미리보기에서 모서리를 끌어 일부만 잘라 저장할 수 있다', async ({ page }) => {
+  const errors = await open(page);
+  await page.getByTestId('camera').click();
+  await expect(page.getByTestId('photo-preview')).toBeVisible();
+  const stage = (await page.getByTestId('crop-stage').boundingBox())!;
+  await expect(page.getByTestId('crop-reset')).toBeHidden(); // 처음에는 전체
+
+  // 오른쪽 아래 모서리를 왼쪽 위로 끌어 절반 정도로 줄이고, 왼쪽 위 모서리도 안쪽으로
+  const drag = async (id: string, dx: number, dy: number) => {
+    const h = (await page.getByTestId(id).boundingBox())!;
+    const x = h.x + h.width / 2;
+    const y = h.y + h.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx / 2, y + dy / 2, { steps: 3 });
+    await page.mouse.move(x + dx, y + dy, { steps: 3 });
+    await page.mouse.up();
+  };
+  await drag('crop-se', -stage.width * 0.4, -stage.height * 0.4);
+  await drag('crop-nw', stage.width * 0.1, stage.height * 0.1);
+  await expect(page.getByTestId('crop-reset')).toBeVisible();
+
+  // 틀을 통째로 옮겨도 크기는 그대로
+  const before = (await page.getByTestId('crop-box').boundingBox())!;
+  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(before.x + before.width / 2 + 20, before.y + before.height / 2 + 20, { steps: 4 });
+  await page.mouse.up();
+  const after = (await page.getByTestId('crop-box').boundingBox())!;
+  expect(Math.round(after.width)).toBe(Math.round(before.width));
+  expect(after.x).toBeGreaterThan(before.x);
+
+  await page.getByTestId('photo-save').click();
+  await expect(page.getByTestId('photo-preview')).toBeHidden();
+  const sizes = await page.evaluate(() => (window.__moongchi as { photoSizes: () => Promise<number[][]> }).photoSizes());
+  expect(sizes).toHaveLength(1);
+  const [w, h] = sizes[0];
+  // 원본 780x1400의 약 50%
+  expect(w).toBeGreaterThan(780 * 0.4);
+  expect(w).toBeLessThan(780 * 0.6);
+  expect(h).toBeGreaterThan(1400 * 0.4);
+  expect(h).toBeLessThan(1400 * 0.6);
+
+  // 앨범에서도 잘린 사진이 열린다
+  await page.getByTestId('album-open').click();
+  await page.getByTestId('album-photo').first().click();
+  await expect.poll(() => page.getByTestId('photo-viewer').locator('img').evaluate((i: HTMLImageElement) => i.naturalWidth)).toBe(w);
+  expect(errors).toEqual([]);
+});
+
+test('전체로 버튼을 누르면 자르기가 취소되고 원본 크기로 저장된다', async ({ page }) => {
+  await open(page);
+  await page.getByTestId('camera').click();
+  const h = (await page.getByTestId('crop-se').boundingBox())!;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x - 80, h.y - 120, { steps: 4 });
+  await page.mouse.up();
+  await page.getByTestId('crop-reset').click();
+  await expect(page.getByTestId('crop-reset')).toBeHidden();
+  await page.getByTestId('photo-save').click();
+  await expect(page.getByTestId('photo-preview')).toBeHidden();
+  const sizes = await page.evaluate(() => (window.__moongchi as { photoSizes: () => Promise<number[][]> }).photoSizes());
+  expect(sizes).toEqual([[780, 1400]]);
+});

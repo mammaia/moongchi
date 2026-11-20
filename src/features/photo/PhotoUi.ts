@@ -1,6 +1,8 @@
 import type { GameContext } from '../../context';
 import { PHOTO_RECORD_VERSION, type PhotoRecord, type PhotoSummary } from '../../core/photoLibrary';
 import { PHOTO } from '../../data/photo';
+import { Cropper } from './Cropper';
+import { cropToPixels, isFullCrop, type CropRect } from './crop';
 import { fitWidth, formatTakenAt, groupByDay, makePhotoId } from './rules';
 
 /** 지금 게임 화면(캔버스)만 그대로 찍어서 돌려준다. HTML로 된 버튼·스파클 표시는 들어가지 않는다. */
@@ -24,20 +26,33 @@ function toBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
   );
 }
 
-async function encode(source: CanvasImageSource, width: number, height: number, maxWidth: number) {
-  const size = fitWidth(width, height, maxWidth);
+type Area = { sx: number; sy: number; sw: number; sh: number };
+
+/** 원본의 area 부분을 잘라 가로 maxWidth 이하의 JPEG로 만든다. */
+async function encode(source: CanvasImageSource, area: Area, maxWidth: number) {
+  const size = fitWidth(area.sw, area.sh, maxWidth);
   const canvas = document.createElement('canvas');
   canvas.width = size.width;
   canvas.height = size.height;
   const g = canvas.getContext('2d')!;
   g.fillStyle = '#f6efe4'; // JPEG는 투명을 못 담으니 방 바탕색을 깐다
   g.fillRect(0, 0, size.width, size.height);
-  g.drawImage(source, 0, 0, size.width, size.height);
+  g.drawImage(source, area.sx, area.sy, area.sw, area.sh, 0, 0, size.width, size.height);
   return { blob: await toBlob(canvas, PHOTO.jpegQuality), ...size };
 }
 
+type Shot = CanvasImageSource & { width: number; height: number };
+/** 찍었지만 아직 저장하지 않은 사진 */
+interface Taken {
+  shot: Shot;
+  full: { blob: Blob; width: number; height: number };
+  takenAt: number;
+  dayKey: string;
+  activity?: string;
+}
+
 /**
- * 카메라 버튼, 촬영 미리보기, 앨범(날짜별 목록, 크게 보기, 지우기) 화면.
+ * 카메라 버튼, 촬영 미리보기(자르기), 앨범(날짜별 목록, 크게 보기, 지우기) 화면.
  * 뭉치의 행동이나 스파클은 건드리지 않고, 게임 화면을 찍어 보관함에 넣기만 한다.
  */
 export class PhotoUi {
@@ -98,22 +113,8 @@ export class PhotoUi {
     try {
       const shot = await this.capture();
       this.playFlash();
-      const [image, thumb] = await Promise.all([
-        encode(shot, shot.width, shot.height, shot.width),
-        encode(shot, shot.width, shot.height, PHOTO.thumbWidth),
-      ]);
-      const photo: PhotoRecord = {
-        v: PHOTO_RECORD_VERSION,
-        id: makePhotoId(takenAt),
-        takenAt,
-        dayKey,
-        width: image.width,
-        height: image.height,
-        image: image.blob,
-        thumb: thumb.blob,
-        meta: activity ? { activity } : {},
-      };
-      this.showPreview(photo);
+      const full = await encode(shot, { sx: 0, sy: 0, sw: shot.width, sh: shot.height }, shot.width);
+      this.showPreview({ shot, full, takenAt, dayKey, activity });
     } catch (error) {
       console.error('[photo] 촬영 실패', error);
       this.showToast('사진을 찍지 못했어요. 다시 해 볼까요?');
@@ -128,28 +129,55 @@ export class PhotoUi {
     this.flash.classList.add('go');
   }
 
-  private showPreview(photo: PhotoRecord): void {
-    this.previewUrl = URL.createObjectURL(photo.image);
+  /** 찍은 사진과 자르기 틀로 저장할 사진을 만든다. 틀이 전체면 이미 만든 원본을 그대로 쓴다. */
+  private async buildPhoto(taken: Taken, crop: CropRect): Promise<PhotoRecord> {
+    const { shot, full } = taken;
+    const area = cropToPixels(crop, shot.width, shot.height);
+    const image = isFullCrop(crop) ? full : await encode(shot, area, area.sw);
+    const thumb = await encode(shot, area, PHOTO.thumbWidth);
+    return {
+      v: PHOTO_RECORD_VERSION,
+      id: makePhotoId(taken.takenAt),
+      takenAt: taken.takenAt,
+      dayKey: taken.dayKey,
+      width: image.width,
+      height: image.height,
+      image: image.blob,
+      thumb: thumb.blob,
+      meta: taken.activity ? { activity: taken.activity } : {},
+    };
+  }
+
+  private showPreview(taken: Taken): void {
+    this.previewUrl = URL.createObjectURL(taken.full.blob);
     const frame = el('div', 'photo-frame');
-    const img = el('img');
-    img.src = this.previewUrl;
-    img.alt = '방금 찍은 사진';
-    frame.append(img);
-    const date = el('p', 'photo-date', formatTakenAt(photo.dayKey, photo.takenAt));
+    const cropper = new Cropper(this.previewUrl, taken.shot.width, taken.shot.height);
+    frame.append(cropper.stage);
+    const hint = el('p', 'photo-hint', PHOTO.cropHint);
+    const date = el('p', 'photo-date', formatTakenAt(taken.dayKey, taken.takenAt));
     date.dataset.testid = 'photo-date';
+    const reset = el('button', 'chip', '전체로');
+    reset.dataset.testid = 'crop-reset';
+    reset.addEventListener('click', () => cropper.reset());
+    const info = el('div', 'photo-info');
+    info.append(date, reset);
     const retake = el('button', 'btn ghost', '다시 찍기');
     retake.dataset.testid = 'photo-retake';
     const save = el('button', 'btn', '저장');
     save.dataset.testid = 'photo-save';
     const actions = el('div', 'photo-actions');
     actions.append(retake, save);
-    this.preview.replaceChildren(frame, date, actions);
+    this.preview.replaceChildren(frame, hint, info, actions);
     this.preview.hidden = false;
+    const syncReset = () => (reset.hidden = isFullCrop(cropper.crop));
+    cropper.onChange = syncReset;
+    syncReset();
 
     retake.addEventListener('click', () => this.closePreview());
     save.addEventListener('click', async () => {
       save.disabled = retake.disabled = true;
       try {
+        const photo = await this.buildPhoto(taken, cropper.crop);
         await this.ctx.photos.add(photo);
         this.ctx.bus.emit('photo:saved', { id: photo.id, takenAt: photo.takenAt, dayKey: photo.dayKey });
         const persistent = await this.ctx.photos.isPersistent();
