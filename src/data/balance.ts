@@ -40,7 +40,20 @@ export const BALANCE = {
       /** 쓰다듬어진 뒤 이 시간 동안은 잠들지 않는다. */
       noSleepMs: 20000,
     },
-    /** 화면 좌표 기준 1초에 움직이는 거리. 띨빵하게 느릿느릿. */
-    walkSpeed: 38,
+    /** 화면 좌표 기준 1초에 움직이는 거리 (가장 빠를 때). 띨빵하게 느릿느릿. */
+    walkSpeed: 34,
+    /**
+     * 걸음걸이. [가정] 모두 자연스러워 보이는지 보기 위한 임시값.
+     * - lookFirstMs: 출발 전에 갈 방향을 먼저 바라보는 시간
+     * - accelMs: 출발해서 제 속도가 될 때까지 걸리는 시간
+     * - easePx: 도착하기 전 천천히 느려지는 구간 길이
+     * - stepPx: 한 걸음(한 번 통 뛰기)에 가는 거리
+     * - hopPx: 한 걸음에 뜨는 높이
+     * - tiltDeg: 걸음마다 좌우로 뒤뚱거리는 각도
+     * - squash: 땅에 닿을 때 납작해지는 정도
+     */
+    walk: { lookFirstMs: 450, accelMs: 600, easePx: 22, stepPx: 15, hopPx: 3, tiltDeg: 5, squash: 0.06 },
+    /** [가정] 가만히 있을 때 두리번거리기: 확인 간격, 한쪽을 보는 확률, 보고 있는 시간 */
+    glance: { everyMs: 2600, chance: 0.35, holdMs: [900, 1500] as const },
   },
 } as const;

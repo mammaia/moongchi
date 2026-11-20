@@ -5,6 +5,7 @@ import { BALANCE } from '../../data/balance';
 import { MUNGCHI_FLOOR } from '../../data/room';
 import { point } from '../room/perspective';
 import { MungchiView } from './MungchiView';
+import { gaitPose, walkSpeedFactor } from './gait';
 import {
   arrived,
   force,
@@ -44,6 +45,8 @@ export class MungchiController {
   /** 행동 비중을 바꾸는 확장 지점. 친밀도·기억·장난감·날씨가 생기면 여기에 추가한다. */
   private readonly modifiers: WeightModifier[] = [];
   private shown: { activity: Activity; settling: boolean } | null = null;
+  /** 지금 걷는 길 (출발점과 출발 시각). 행동이 바뀌면 새로 잡는다. */
+  private trip: { from: { x: number; y: number }; since: number } | null = null;
 
   constructor(scene: Phaser.Scene, private readonly ctx: GameContext) {
     const saved = ctx.store.get().character;
@@ -116,16 +119,23 @@ export class MungchiController {
       this.walk(deltaMs, now);
     }
     this.syncView();
+    this.view.update(deltaMs);
   }
 
   private walk(deltaMs: number, now: number): void {
     const target = this.brain.target!;
+    if (!this.trip || this.trip.since !== this.brain.since) {
+      this.trip = { from: this.position, since: this.brain.since };
+    }
     const { x, y } = this.view;
     const dx = target.x - x;
     const dy = target.y - y;
     const dist = Math.hypot(dx, dy);
-    const step = (BALANCE.character.walkSpeed * deltaMs) / 1000;
-    if (dist <= step) {
+    const total = Math.hypot(target.x - this.trip.from.x, target.y - this.trip.from.y);
+    const traveled = Math.max(0, total - dist);
+    const speed = walkSpeedFactor(now - this.trip.since, traveled, total);
+    const step = (BALANCE.character.walkSpeed * speed * deltaMs) / 1000;
+    if (dist < 0.5 || (speed > 0 && dist <= step)) {
       this.view.setPosition(target.x, target.y);
       this.brain = arrived(this.brain, now, Math.random);
       this.ctx.store.update((d) => {
@@ -134,7 +144,7 @@ export class MungchiController {
       });
     } else {
       this.view.setPosition(x + (dx / dist) * step, y + (dy / dist) * step);
-      this.view.walkStep(deltaMs, dx / dist);
+      this.view.walkPose(gaitPose(traveled, speed), dx / dist);
     }
   }
 

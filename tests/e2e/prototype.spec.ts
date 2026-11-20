@@ -18,6 +18,19 @@ async function open(page: Page, query = '') {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/${query}`);
   await page.waitForFunction(() => (window.__moongchi as Api | undefined)?.ready());
+  // 느린 CI에서는 게임이 켜진 뒤에도 화면 크기 맞추기가 조금 늦게 끝난다.
+  // 캔버스 위치가 두 번 연속 같을 때까지 기다려야 뭉치를 정확히 누를 수 있다.
+  await page.waitForFunction(
+    () => {
+      const r = document.querySelector('canvas')!.getBoundingClientRect();
+      const w = window as unknown as { __rect?: string };
+      const prev = w.__rect;
+      w.__rect = `${r.x},${r.y},${r.width},${r.height}`;
+      return prev === w.__rect;
+    },
+    undefined,
+    { polling: 150 },
+  );
   await page.evaluate(() => (window.__moongchi as Api).freezeMungchi(true));
   return errors;
 }
@@ -71,6 +84,7 @@ test('문지르기도 쓰다듬기로 센다', async ({ page }) => {
 test('새로고침해도 스파클이 남아 있다', async ({ page }) => {
   await open(page);
   await petOnce(page);
+  await expect.poll(() => sparkle(page)).toBe(10); // 새로고침 전에 쓰다듬기가 들어갔는지 먼저 확인
   await page.waitForTimeout(400); // 자동 저장 대기
   await page.reload();
   await page.waitForFunction(() => (window.__moongchi as Api | undefined)?.ready());
