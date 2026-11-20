@@ -73,6 +73,17 @@ export const HOTSPOTS: Record<HotspotId, Hotspot> = {
 
 /**
  * 뭉치가 스스로 돌아다닐 수 있는 바닥 범위 (바닥 좌표 u, t).
- * 침대와 책상·조리대·냉장고에 겹치지 않는 방 가운데. [가정] 그림을 바꾸면 함께 조정.
+ * 침대 앞(t 0.2)부터 현관 매트 앞(t 0.8)까지 앞뒤로 넓게. 침대·책상·조리대·냉장고와 왼쪽 아래 카메라 버튼을 피한다.
+ * [가정] 그림을 바꾸면 함께 조정.
  */
-export const MUNGCHI_FLOOR = { u: [0.3, 0.66], t: [0.42, 0.72] } as const;
+export const MUNGCHI_FLOOR = { u: [0.36, 0.74], t: [0.2, 0.8] } as const;
+
+/**
+ * 뭉치가 가구를 쓰는 자리 (바닥 좌표 u, t, 높이 h). [가정] 모두 임시 위치.
+ * - bed: approach(침대 앞 바닥) → on(이불 위, h = 매트리스 높이)으로 폴짝 올라간다.
+ * - desk: approach(책상 앞) → hide(책상 왼쪽 끝 뒤, 책상 앞판에 가려짐), 가끔 peek(왼쪽으로 빼꼼)한다.
+ */
+export const MUNGCHI_SPOTS = {
+  bed: { approach: { u: 0.37, t: 0.4 }, on: { u: 0.24, t: 0.22, h: 0.1 } },
+  desk: { approach: { u: 0.66, t: 0.22 }, hide: { u: 0.715, t: 0.07 }, peek: { u: 0.67, t: 0.08 } },
+} as const;

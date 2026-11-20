@@ -35,6 +35,8 @@ export function installDevPanel(root: HTMLElement, ctx: GameContext): void {
     wander: '짧게 이동하기',
     play: '혼자 놀기',
     sleep: '잠들기',
+    climb: '침대에 올라가기',
+    hide: '책상 뒤에 숨기',
     happy: '좋아하기 (쓰다듬기 반응)',
   };
   let activityText = '-';
@@ -66,7 +68,7 @@ export function installDevPanel(root: HTMLElement, ctx: GameContext): void {
     );
   };
 
-  for (const a of ['idle', 'wander', 'play', 'sleep'] as MungchiAutoActivity[]) {
+  for (const a of ['idle', 'wander', 'play', 'sleep', 'climb', 'hide'] as MungchiAutoActivity[]) {
     button(`뭉치: ${ACTIVITY_NAMES[a]}`, () => ctx.bus.emit('dev:force-activity', { activity: a }));
   }
   button('다음 날로 넘기기 (+1일)', () => ctx.clock.advanceDays(1));

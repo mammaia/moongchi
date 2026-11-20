@@ -79,6 +79,7 @@ window.__moongchi = {
   activity: () => scene.mungchi.activity,
   settling: () => scene.mungchi.settling,
   toys: () => scene.mungchi.toysInRoom,
+  onFurniture: () => scene.mungchi.onFurniture,
   resume: (awayMs: number) => bus.emit('app:resumed', { awayMs }),
   openHotspotEvent: (id: string) => bus.emit('hotspot:opened', { id }),
   photoCount: async () => (await photos.list()).length,

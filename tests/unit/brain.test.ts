@@ -10,6 +10,7 @@ import {
   pickWanderTarget,
   tick,
   weightsFor,
+  type AutoActivity,
   type BrainState,
 } from '../../src/features/character/brain';
 
@@ -35,7 +36,9 @@ function simulate(ms: number, rng = seeded(7)) {
   const log: BrainState[] = [b];
   for (let t = 0; t <= ms; t += 250) {
     let next = tick(b, t, rng, here, area);
+    // 걷기는 2초, 가구 쓰기는 6초 뒤에 다 하고 돌아왔다고 친다.
     if (next.activity === 'wander' && t - next.since >= 2000) next = arrived(next, t, rng);
+    if ((next.activity === 'climb' || next.activity === 'hide') && t - next.since >= 6000) next = arrived(next, t, rng);
     if (next !== b) log.push(next);
     b = next;
   }
@@ -43,14 +46,14 @@ function simulate(ms: number, rng = seeded(7)) {
 }
 
 describe('뭉치 자율 행동: 고르기', () => {
-  it('평소에는 가만히 있기, 짧게 이동하기, 혼자 놀기를 스스로 고르고, 잠은 스스로 고르지 않는다', () => {
+  it('평소에는 가만히 있기, 짧게 이동하기, 혼자 놀기, 침대 올라가기, 책상 뒤 숨기를 스스로 고르고, 잠은 스스로 고르지 않는다', () => {
     const w = weightsFor(ready(), 1_000_000);
     expect(w.idle).toBeGreaterThan(0);
     expect(w.wander).toBeGreaterThan(0);
     expect(w.play).toBeGreaterThan(0);
     expect(w.sleep).toBe(0);
     const seen = new Set(simulate(30 * 60_000).map((b) => b.activity));
-    expect([...seen].sort()).toEqual(['idle', 'play', 'wander']);
+    expect([...seen].sort()).toEqual(['climb', 'hide', 'idle', 'play', 'wander']);
   });
 
   it('행동 시간이 끝나기 전에는 바꾸지 않는다', () => {
@@ -187,7 +190,7 @@ describe('뭉치 낮잠', () => {
     for (let t = n.until; t < n.until + 10 * 60_000; t += 250) {
       b = tick(b, t, Math.random, here, area);
       expect(b.activity).not.toBe('sleep');
-      if (b.activity === 'wander') b = arrived(b, t, Math.random);
+      if (b.activity === 'wander' || b.activity === 'climb' || b.activity === 'hide') b = arrived(b, t, Math.random);
     }
   });
 
@@ -211,5 +214,24 @@ describe('뭉치 자율 행동: 확장 지점', () => {
       const b = decideNext(ready(), 1_000_000, Math.random, here, area, [noPlay]);
       expect(b.activity).not.toBe('play');
     }
+  });
+});
+
+describe('가구 쓰기', () => {
+  it('침대에 올라가기·책상 뒤 숨기도 다 하고 돌아오면 잠깐 멈춘다', () => {
+    for (const a of ['climb', 'hide'] as const) {
+      const b = force(ready(), a, 0, seq(0.5), here, area);
+      const done = arrived(b, 5000, seq(0.5));
+      expect(done.activity).toBe('idle');
+      expect(done.settling).toBe(true);
+      expect(done.lastEnded[a]).toBe(5000);
+    }
+  });
+
+  it('한 번 쓰고 나면 한동안 같은 가구를 다시 쓰지 않는다', () => {
+    const b = force(ready(), 'climb', 0, seq(0.5), here, area);
+    const done = { ...arrived(b, 5000, seq(0.5)), history: ['climb', 'idle'] as AutoActivity[] };
+    expect(weightsFor(done, 6000).climb).toBe(0);
+    expect(weightsFor(done, 5000 + BALANCE.character.behaviors.climb.cooldownMs).climb).toBeGreaterThan(0);
   });
 });

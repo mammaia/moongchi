@@ -8,17 +8,19 @@ type Api = {
   freezeMungchi: (v?: boolean) => void;
   activity: () => Activity;
   settling: () => boolean;
-  forceActivity: (a: Exclude<Activity, 'happy'>) => void;
+  forceActivity: (a: Exclude<Activity, 'happy'> | 'climb' | 'hide') => void;
   toys: () => string[];
+  onFurniture: () => string | null;
   resume: (awayMs: number) => void;
   hotspotPoint: (id: string) => { x: number; y: number } | null;
 };
 const api = (page: Page) => ({
   activity: () => page.evaluate(() => (window.__moongchi as Api).activity()),
   point: () => page.evaluate(() => (window.__moongchi as Api).mungchiPoint()),
-  force: (a: Exclude<Activity, 'happy'>) => page.evaluate((x) => (window.__moongchi as Api).forceActivity(x), a),
+  force: (a: Exclude<Activity, 'happy'> | 'climb' | 'hide') => page.evaluate((x) => (window.__moongchi as Api).forceActivity(x), a),
   sparkle: () => page.evaluate(() => (window.__moongchi as Api).state().wallet.sparkle),
   toys: () => page.evaluate(() => (window.__moongchi as Api).toys()),
+  onFurniture: () => page.evaluate(() => (window.__moongchi as Api).onFurniture()),
   resume: (ms: number) => page.evaluate((x) => (window.__moongchi as Api).resume(x), ms),
 });
 
@@ -105,7 +107,7 @@ test('혼자 노는 중에 쓰다듬어도 충돌 없이 좋아하기로 바뀐�
 test('그냥 두면 스스로 행동하고, 그 사이에도 쓰다듬기가 된다', async ({ page }) => {
   const errors = await open(page, { frozen: false });
   const m = api(page);
-  expect(['idle', 'wander', 'play', 'sleep']).toContain(await m.activity());
+  expect(['idle', 'wander', 'play', 'sleep', 'climb', 'hide']).toContain(await m.activity());
   // 걷는 중에도 쓰다듬기가 된다
   await m.force('wander');
   await page.waitForTimeout(300);
@@ -157,4 +159,32 @@ test('책상(다이어리)을 열면 뭉치가 잠깐 존다', async ({ page }) 
   await page.mouse.click(p!.x, p!.y);
   await expect(page.getByTestId('detail-sheet')).toHaveClass(/open/);
   expect(await api(page).activity()).toBe('sleep');
+});
+
+test('침대에 올라가서 놀고, 침대 위에서도 쓰다듬을 수 있다', async ({ page }) => {
+  const errors = await open(page, { frozen: true });
+  const m = api(page);
+  const before = await m.point();
+  await m.force('climb');
+  await expect.poll(() => m.onFurniture(), { timeout: 20000 }).toBe('climb');
+  await page.waitForTimeout(900); // 다 올라갈 때까지
+  const onBed = await m.point();
+  expect(onBed.y).toBeLessThan(before.y); // 침대 위라 화면에서 더 위에 보인다
+  await petOnce(page);
+  expect(await m.activity()).toBe('happy');
+  expect(await m.onFurniture()).toBe('climb'); // 쓰다듬어도 침대 위에 그대로
+  // 다른 데로 가려면 먼저 내려온다
+  await m.force('wander');
+  await expect.poll(() => m.onFurniture(), { timeout: 5000 }).toBeNull();
+  expect(errors).toEqual([]);
+});
+
+test('책상 뒤에 숨었다가 나온다', async ({ page }) => {
+  const errors = await open(page, { frozen: true });
+  const m = api(page);
+  await m.force('hide');
+  await expect.poll(() => m.onFurniture(), { timeout: 20000 }).toBe('hide');
+  await m.force('play');
+  await expect.poll(() => m.onFurniture(), { timeout: 5000 }).toBeNull();
+  expect(errors).toEqual([]);
 });
