@@ -1,19 +1,36 @@
 import Phaser from 'phaser';
 import type { GameContext } from '../../context';
+import type { MungchiActivity } from '../../core/events';
 import { BALANCE } from '../../data/balance';
+import { MUNGCHI_FLOOR } from '../../data/room';
 import { point } from '../room/perspective';
 import { MungchiView } from './MungchiView';
-import { arrived, initialBrain, petted, tick, type Area, type BrainState } from './brain';
+import {
+  arrived,
+  force,
+  initialBrain,
+  petted,
+  tick,
+  type Activity,
+  type Area,
+  type AutoActivity,
+  type BrainState,
+  type WeightModifier,
+} from './brain';
 
-/** 뭉치가 돌아다닐 수 있는 바닥 범위 (가구와 겹치지 않는 가운데). */
+/** 뭉치가 스스로 돌아다닐 수 있는 바닥 범위 (가구와 겹치지 않는 가운데). */
 export const WANDER_AREA: Area = (() => {
-  const a = point(0.42, 0.34);
-  const b = point(0.58, 0.72);
+  const a = point(MUNGCHI_FLOOR.u[0], MUNGCHI_FLOOR.t[0]);
+  const b = point(MUNGCHI_FLOOR.u[1], MUNGCHI_FLOOR.t[1]);
   return { minX: a.x, maxX: b.x, minY: a.y, maxY: b.y };
 })();
 
 const inside = (area: Area, x: number | null, y: number | null): boolean =>
   x !== null && y !== null && x >= area.minX && x <= area.maxX && y >= area.minY && y <= area.maxY;
+
+// brain의 행동 이름과 이벤트의 행동 이름이 어긋나면 여기서 타입 오류가 난다.
+const _sameNames: MungchiActivity = 'idle' as Activity;
+void _sameNames;
 
 /**
  * 뭉치 기능. 머리(brain)가 정한 행동을 그림(view)에 옮기고,
@@ -23,8 +40,10 @@ export class MungchiController {
   readonly view: MungchiView;
   private brain: BrainState;
   private lastStrokeAt = -Infinity;
-  private walkPhase = 0;
   private frozen = false;
+  /** 행동 비중을 바꾸는 확장 지점. 친밀도·기억·장난감·날씨가 생기면 여기에 추가한다. */
+  private readonly modifiers: WeightModifier[] = [];
+  private shown: { activity: Activity; settling: boolean } | null = null;
 
   constructor(scene: Phaser.Scene, private readonly ctx: GameContext) {
     const saved = ctx.store.get().character;
@@ -33,6 +52,7 @@ export class MungchiController {
       : { x: (WANDER_AREA.minX + WANDER_AREA.maxX) / 2, y: (WANDER_AREA.minY + WANDER_AREA.maxY) / 2 };
     this.view = new MungchiView(scene, start.x, start.y);
     this.brain = initialBrain(ctx.clock.now());
+    this.syncView();
 
     const c = this.view.container;
     c.on('pointerdown', () => this.stroke());
@@ -43,55 +63,103 @@ export class MungchiController {
     ctx.bus.on('sparkle:changed', ({ delta, reason }) => {
       if (delta > 0 && reason === 'first-pet-of-day') this.view.burstSparkles();
     });
+    ctx.bus.on('dev:force-activity', ({ activity }) => this.forceActivity(activity));
+  }
+
+  /** 행동 비중 배율을 추가한다. 되돌리는 함수를 돌려준다. */
+  addModifier(modifier: WeightModifier): () => void {
+    this.modifiers.push(modifier);
+    return () => {
+      const i = this.modifiers.indexOf(modifier);
+      if (i >= 0) this.modifiers.splice(i, 1);
+    };
   }
 
   /** 테스트용: 뭉치를 제자리에 멈춘다. */
   setFrozen(value: boolean): void {
     this.frozen = value;
-    if (value) this.brain = { activity: 'idle', until: Infinity, target: null };
-    else this.brain = initialBrain(this.ctx.clock.now());
-    this.view.setSleeping(false);
+    const now = this.ctx.clock.now();
+    this.brain = value ? { ...initialBrain(now), until: Infinity } : initialBrain(now);
+    this.shown = null;
+    this.syncView();
   }
 
-  get activity(): BrainState['activity'] {
+  /** 개발·테스트용: 정해진 행동을 바로 시작한다. 멈춤 상태면 그 행동이 끝난 뒤 다시 가만히 멈춘다. */
+  forceActivity(activity: AutoActivity): void {
+    const now = this.ctx.clock.now();
+    this.brain = force(this.brain, activity, now, Math.random, this.position, WANDER_AREA);
+    this.syncView();
+  }
+
+  get activity(): Activity {
     return this.brain.activity;
+  }
+
+  get settling(): boolean {
+    return this.brain.settling;
+  }
+
+  private get position() {
+    return { x: this.view.x, y: this.view.y };
   }
 
   update(deltaMs: number): void {
     const now = this.ctx.clock.now();
-    if (!this.frozen) this.brain = tick(this.brain, now, Math.random, WANDER_AREA);
-    this.view.setSleeping(this.brain.activity === 'sleep');
+    if (!this.frozen) {
+      this.brain = tick(this.brain, now, Math.random, this.position, WANDER_AREA, this.modifiers);
+    } else if (now >= this.brain.until) {
+      // 테스트용 멈춤: 하던 행동이 끝나면 스스로 고르지 않고 가만히 있는다.
+      this.brain = { ...this.brain, activity: 'idle', since: now, until: Infinity, target: null, prop: null, settling: false };
+    }
 
     if (this.brain.activity === 'wander' && this.brain.target) {
-      const { x, y } = this.view;
-      const dx = this.brain.target.x - x;
-      const dy = this.brain.target.y - y;
-      const dist = Math.hypot(dx, dy);
-      const step = (BALANCE.character.walkSpeed * deltaMs) / 1000;
-      if (dist <= step) {
-        this.view.setPosition(this.brain.target.x, this.brain.target.y);
-        this.view.setWalkBob(0);
-        this.brain = arrived(this.brain, now);
-        this.ctx.store.update((d) => {
-          d.character.x = Math.round(this.view.x);
-          d.character.y = Math.round(this.view.y);
-        });
-      } else {
-        this.view.setPosition(x + (dx / dist) * step, y + (dy / dist) * step);
-        this.walkPhase += deltaMs / 140;
-        this.view.setWalkBob(this.walkPhase);
-      }
-    } else {
-      this.view.setWalkBob(0);
+      this.walk(deltaMs, now);
     }
+    this.syncView();
+  }
+
+  private walk(deltaMs: number, now: number): void {
+    const target = this.brain.target!;
+    const { x, y } = this.view;
+    const dx = target.x - x;
+    const dy = target.y - y;
+    const dist = Math.hypot(dx, dy);
+    const step = (BALANCE.character.walkSpeed * deltaMs) / 1000;
+    if (dist <= step) {
+      this.view.setPosition(target.x, target.y);
+      this.brain = arrived(this.brain, now, Math.random);
+      this.ctx.store.update((d) => {
+        d.character.x = Math.round(this.view.x);
+        d.character.y = Math.round(this.view.y);
+      });
+    } else {
+      this.view.setPosition(x + (dx / dist) * step, y + (dy / dist) * step);
+      this.view.walkStep(deltaMs, dx / dist);
+    }
+  }
+
+  /** 머리의 행동이 바뀌었으면 그림을 바꾸고 다른 기능에 알린다. */
+  private syncView(): void {
+    const { activity, settling, prop } = this.brain;
+    const prev = this.shown;
+    if (prev && prev.activity === activity && prev.settling === settling) return;
+    // 계속 쓰다듬는 중(좋아하기 → 좋아하기)에는 다시 그리지 않는다.
+    if (!prev || prev.activity !== activity) this.view.setActivity(activity, prop);
+    this.shown = { activity, settling };
+    this.ctx.bus.emit('mungchi:activity', {
+      activity,
+      previous: prev?.activity ?? activity,
+      settling,
+      at: this.ctx.clock.now(),
+    });
   }
 
   private stroke(): void {
     const now = this.ctx.clock.now();
     if (now - this.lastStrokeAt < BALANCE.petting.strokeCooldownMs) return;
     this.lastStrokeAt = now;
-    this.brain = this.frozen ? { activity: 'idle', until: Infinity, target: null } : petted(this.brain, now);
-    this.view.setSleeping(false);
+    this.brain = petted(this.brain, now);
+    this.syncView();
     this.view.playHappy();
     this.ctx.bus.emit('pet:stroked', { at: now });
   }

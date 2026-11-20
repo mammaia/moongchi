@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { scaleAtY } from '../room/perspective';
+import type { Activity, PlayProp } from './brain';
 
 const R = 44; // 기본 반지름
 const FUR = 0xffffff;
@@ -12,7 +13,11 @@ const TEXT_STYLE = {
   resolution: 3,
 };
 
-/** 뭉치 그림. 하얀 털뭉치를 도형으로 그린 임시 그림. */
+/**
+ * 뭉치 그림. 하얀 털뭉치를 도형으로 그린 임시 그림.
+ * 행동마다 보이는 모습은 setActivity() 한 곳에서 정한다.
+ * 나중에 정식 그림(스프라이트 애니메이션)이 생기면 이 파일만 바꾸면 된다.
+ */
 export class MungchiView {
   readonly container: Phaser.GameObjects.Container;
   private readonly body: Phaser.GameObjects.Container;
@@ -22,6 +27,14 @@ export class MungchiView {
   private blinking = false;
   private squishing = false;
   private zzzTimer?: Phaser.Time.TimerEvent;
+  /** 눈동자가 보는 방향 (-1 왼쪽 ~ 1 오른쪽) */
+  private look = 0;
+  private lookTimer?: Phaser.Time.TimerEvent;
+  private walkPhase = 0;
+  /** 혼자 놀기 중에 쓰는 임시 소품과 움직임 */
+  private prop?: Phaser.GameObjects.Graphics;
+  private playTweens: Phaser.Tweens.Tween[] = [];
+  private current: Activity = 'idle';
 
   constructor(private readonly scene: Phaser.Scene, x: number, y: number) {
     this.shadow = scene.add.ellipse(0, R * 0.92, R * 1.7, R * 0.42, 0x8c7058, 0.18);
@@ -54,12 +67,87 @@ export class MungchiView {
     this.applyDepthScale();
   }
 
-  /** 걸을 때 통통 튀는 느낌 */
-  setWalkBob(phase: number): void {
-    this.body.y = -Math.abs(Math.sin(phase)) * 5;
+  /**
+   * 행동에 맞는 모습으로 바꾼다. 행동이 바뀔 때만 부른다.
+   * [임시 그림] 놀기·두리번거리기는 도형과 움직임으로만 표현한 임시 애니메이션.
+   */
+  setActivity(activity: Activity, prop: PlayProp | null = null): void {
+    this.stopPlay();
+    this.lookTimer?.remove();
+    this.lookTimer = undefined;
+    this.body.y = 0;
+    this.walkPhase = 0;
+    this.current = activity;
+    this.setSleeping(activity === 'sleep');
+    if (activity === 'idle') {
+      // 가만히 있기: 가끔 두리번거린다.
+      this.setLook(0);
+      this.lookTimer = this.scene.time.addEvent({
+        delay: 1800,
+        loop: true,
+        callback: () => {
+          if (Math.random() < 0.5) this.setLook([-1, 0, 1][Math.floor(Math.random() * 3)]);
+        },
+      });
+    } else if (activity === 'play' && prop) {
+      this.startPlay(prop);
+    } else {
+      this.setLook(0);
+    }
   }
 
-  setSleeping(value: boolean): void {
+  /** 짧게 이동하기: 가는 방향을 보며 통통 튄다. */
+  walkStep(deltaMs: number, dirX: number): void {
+    if (this.current !== 'wander') return;
+    this.walkPhase += deltaMs / 140;
+    this.body.y = -Math.abs(Math.sin(this.walkPhase)) * 5;
+    this.setLook(dirX > 0.2 ? 1 : dirX < -0.2 ? -1 : 0);
+  }
+
+  private setLook(value: number): void {
+    if (this.look === value) return;
+    this.look = value;
+    this.drawFace();
+  }
+
+  /** [임시 그림] 혼자 놀기: 옆에 소품이 나타나고, 뭉치가 소품을 툭툭 치며 들썩인다. */
+  private startPlay(prop: PlayProp): void {
+    const g = this.scene.add.graphics();
+    this.drawProp(g, prop);
+    g.setPosition(R * 1.25, R * 0.62);
+    this.container.add(g);
+    this.prop = g;
+    this.setLook(1);
+    this.playTweens = [
+      // 소품 쪽으로 몸을 기울이며 통통
+      this.scene.tweens.add({ targets: this.body, angle: 9, y: -7, duration: 260, yoyo: true, repeat: -1, repeatDelay: 380, ease: 'Sine.easeOut' }),
+      // 소품이 굴러갔다 돌아온다
+      this.scene.tweens.add({ targets: g, x: R * 1.7, angle: 70, duration: 520, yoyo: true, repeat: -1, repeatDelay: 120, ease: 'Sine.easeInOut' }),
+    ];
+  }
+
+  private stopPlay(): void {
+    for (const t of this.playTweens) t.remove();
+    this.playTweens = [];
+    this.body.angle = 0;
+    this.prop?.destroy();
+    this.prop = undefined;
+  }
+
+  private drawProp(g: Phaser.GameObjects.Graphics, prop: PlayProp): void {
+    if (prop === 'tissue-roll') {
+      // 휴지심: 옆으로 누운 갈색 원통
+      g.fillStyle(0xd9b48a, 1).fillRoundedRect(-12, -8, 24, 16, 4);
+      g.fillStyle(0xc39a6b, 1).fillEllipse(12, 0, 8, 16);
+      g.fillStyle(0x8f6d4b, 1).fillEllipse(12, 0, 4, 10);
+    } else {
+      // 양말: 줄무늬 양말 한 짝
+      g.fillStyle(0xf4a7b9, 1).fillRoundedRect(-6, -14, 11, 20, 3).fillRoundedRect(-6, 0, 18, 9, 4);
+      g.fillStyle(0xffffff, 1).fillRect(-6, -9, 11, 3).fillRect(-6, -3, 11, 3);
+    }
+  }
+
+  private setSleeping(value: boolean): void {
     if (this.sleeping === value) return;
     this.sleeping = value;
     this.drawFace();
@@ -161,10 +249,11 @@ export class MungchiView {
         g.strokePath();
       }
     } else {
+      const lx = this.look * 3;
       g.fillStyle(INK, 1);
-      g.fillEllipse(-13, eyeY, 6, 8).fillEllipse(13, eyeY, 6, 8);
+      g.fillEllipse(-13 + lx, eyeY, 6, 8).fillEllipse(13 + lx, eyeY, 6, 8);
       g.fillStyle(0xffffff, 1);
-      g.fillCircle(-12, eyeY - 2, 1.4).fillCircle(14, eyeY - 2, 1.4);
+      g.fillCircle(-12 + lx, eyeY - 2, 1.4).fillCircle(14 + lx, eyeY - 2, 1.4);
     }
     // 작은 입
     g.lineStyle(1.8, INK, 1);
