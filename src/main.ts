@@ -66,4 +66,6 @@ window.__moongchi = {
   zoomedHotspot: () => scene.zoomedHotspot,
   freezeMungchi: (value = true) => scene.mungchi.setFrozen(value),
   activity: () => scene.mungchi.activity,
+  settling: () => scene.mungchi.settling,
+  forceActivity: (a: Parameters<RoomScene['mungchi']['forceActivity']>[0]) => scene.mungchi.forceActivity(a),
 };

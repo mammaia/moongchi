@@ -70,3 +70,9 @@ export const HOTSPOTS: Record<HotspotId, Hotspot> = {
     feature: { name: '산책', stage: 4 },
   },
 };
+
+/**
+ * 뭉치가 스스로 돌아다닐 수 있는 바닥 범위 (바닥 좌표 u, t).
+ * 침대와 책상·조리대·냉장고에 겹치지 않는 방 가운데. [가정] 그림을 바꾸면 함께 조정.
+ */
+export const MUNGCHI_FLOOR = { u: [0.3, 0.66], t: [0.42, 0.72] } as const;

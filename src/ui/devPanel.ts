@@ -1,4 +1,5 @@
 import type { GameContext } from '../context';
+import type { MungchiActivity, MungchiAutoActivity } from '../core/events';
 import { createNewSave } from '../core/saveSchema';
 import { isPetRewardAvailable } from '../features/economy/sparkle';
 
@@ -29,6 +30,19 @@ export function installDevPanel(root: HTMLElement, ctx: GameContext): void {
     panel.append(b);
   };
 
+  const ACTIVITY_NAMES: Record<MungchiActivity, string> = {
+    idle: '가만히 있기',
+    wander: '짧게 이동하기',
+    play: '혼자 놀기',
+    sleep: '잠들기',
+    happy: '좋아하기 (쓰다듬기 반응)',
+  };
+  let activityText = '-';
+  ctx.bus.on('mungchi:activity', ({ activity, settling }) => {
+    activityText = ACTIVITY_NAMES[activity] + (settling ? ' (잠깐 멈춤)' : '');
+    render();
+  });
+
   const render = () => {
     const s = ctx.store.get();
     const today = ctx.clock.dayKey();
@@ -39,6 +53,7 @@ export function installDevPanel(root: HTMLElement, ctx: GameContext): void {
       ['오늘 보상', isPetRewardAvailable(s, today) ? '받을 수 있음' : '받음'],
       ['쓰다듬은 횟수', String(s.petting.totalStrokes)],
       ['스파클', String(s.wallet.sparkle)],
+      ['뭉치 행동', activityText],
     ];
     info.replaceChildren(
       ...rows.flatMap(([k, v]) => {
@@ -51,6 +66,9 @@ export function installDevPanel(root: HTMLElement, ctx: GameContext): void {
     );
   };
 
+  for (const a of ['idle', 'wander', 'play', 'sleep'] as MungchiAutoActivity[]) {
+    button(`뭉치: ${ACTIVITY_NAMES[a]}`, () => ctx.bus.emit('dev:force-activity', { activity: a }));
+  }
   button('다음 날로 넘기기 (+1일)', () => ctx.clock.advanceDays(1));
   button('날짜 원래대로', () => ctx.clock.resetOffset());
   button('스파클 0으로', () => ctx.store.update((d) => void (d.wallet.sparkle = 0)));

@@ -11,7 +11,19 @@ export type GameEvents = {
   /** 방 안의 물건을 눌러 자세히 보기를 열었다/닫았다. */
   'hotspot:opened': { id: string };
   'hotspot:closed': { id: string };
+  /**
+   * 뭉치의 행동이 바뀌었다. 기억, 사진, 친밀도 같은 이후 기능이 듣고 쓸 수 있다.
+   * settling = 행동 사이에 잠깐 멈춰 있는 중.
+   */
+  'mungchi:activity': { activity: MungchiActivity; previous: MungchiActivity; settling: boolean; at: number };
+  /** 개발자 패널: 뭉치에게 이 행동을 바로 시키기 */
+  'dev:force-activity': { activity: MungchiAutoActivity };
 };
+
+/** 뭉치가 스스로 하는 행동: 가만히 있기, 짧게 이동하기, 혼자 놀기, 잠들기 */
+export type MungchiAutoActivity = 'idle' | 'wander' | 'play' | 'sleep';
+/** 스스로 하는 행동 + 사용자에 대한 반응(쓰다듬기에 좋아하기) */
+export type MungchiActivity = MungchiAutoActivity | 'happy';
 
 export type SparkleReason = 'first-pet-of-day' | 'dev';
 
