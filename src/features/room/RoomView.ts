@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { PHOTO_HIDDEN_KEY } from '../../core/photoLibrary';
 import { HOTSPOTS, type HotspotId } from '../../data/room';
-import { BACK_WALL, WORLD, ceilY, floorY, leftEdge, point, type Pt } from './perspective';
+import { BACK_WALL, WORLD, ceilY, depthForFloorY, floorY, leftEdge, point, type Pt } from './perspective';
 
 export interface Bounds {
   x: number;
@@ -87,7 +87,8 @@ export class RoomView {
   readonly hotspotBounds = new Map<HotspotId, Bounds>();
   /** 물건 모양 그대로의 누르는 영역과, 그 안의 대표 지점 */
   readonly hotspotShapes = new Map<HotspotId, { hull: Pt[]; tap: Pt }>();
-  private readonly g: Phaser.GameObjects.Graphics;
+  /** 지금 그리는 붓. 대부분은 바닥 층, 뭉치를 가릴 수 있는 가구는 따로 층을 만든다. */
+  private g: Phaser.GameObjects.Graphics;
 
   constructor(private readonly scene: Phaser.Scene) {
     this.g = scene.add.graphics().setDepth(0);
@@ -95,10 +96,21 @@ export class RoomView {
     this.drawWindow();
     this.drawBathroomDoor();
     this.drawBed();
-    this.drawDesk();
+    this.drawOnOwnLayer(point(0.6, 0.16).y, () => this.drawDesk());
     this.drawCounter();
     this.drawFridge();
     this.drawEntrance();
+  }
+
+  /**
+   * 뭉치를 가릴 수 있는 가구는 따로 층에 그린다. frontY = 그 가구 앞면이 바닥에 닿는 화면 높이.
+   * 뭉치가 그보다 안쪽(위)에 있으면 가구가 뭉치를 가리고, 앞쪽(아래)에 있으면 뭉치가 앞에 보인다.
+   */
+  private drawOnOwnLayer(frontY: number, draw: () => void): void {
+    const base = this.g;
+    this.g = this.scene.add.graphics().setDepth(depthForFloorY(frontY));
+    draw();
+    this.g = base;
   }
 
   /** 각 물건 위에 작은 이름표와 누를 수 있는 영역을 만든다. */

@@ -24,6 +24,18 @@ export const BALANCE = {
       play: { weight: 35, durationMs: [7000, 12000], cooldownMs: 5000, maxInARow: 1 },
       // [확정 2026-11-20] 평소에는 스스로 잠들지 않는다 (비중 0). 잠은 아래 nap 규칙으로만.
       sleep: { weight: 0, durationMs: [20000, 45000], cooldownMs: 90000, maxInARow: 1 },
+      // 가구 쓰기 (사용자 요청 2026-11-20). durationMs는 다 하고 돌아오기까지의 제한 시간.
+      climb: { weight: 12, durationMs: [30000, 30000], cooldownMs: 30000, maxInARow: 1 },
+      hide: { weight: 10, durationMs: [30000, 30000], cooldownMs: 40000, maxInARow: 1 },
+    },
+    /**
+     * 가구 쓰기 동작. [가정] 모두 임시값.
+     * - climb: 침대 위로 폴짝(jumpMs), 위에서 통통 뛰며 놀기(stayMs), 폴짝 내려오기
+     * - hide: 책상 뒤로 살금살금(sneakMs), 숨어서 가끔 빼꼼(stayMs, peekEveryMs), 나오기
+     */
+    furniture: {
+      climb: { jumpMs: 650, stayMs: [3500, 7000] as const, bounceMs: 520, bouncePx: 7 },
+      hide: { sneakMs: 1100, stayMs: [4000, 8000] as const, peekEveryMs: 1800, peekMs: 900 },
     },
     /** [가정] 행동 하나가 끝나면 바로 다음 행동으로 넘어가지 않고 잠깐 멈춰 있는 시간. */
     settleMs: [300, 900] as const,
@@ -38,7 +50,9 @@ export const BALANCE = {
     /** [가정] 게임을 켜고 이 시간 동안은 잠들지 않는다 (켜자마자 자 버리지 않게). */
     noSleepAfterStartMs: 30000,
     /** [가정] 짧게 이동하기: 한 번에 움직이는 최대 거리 (화면 좌표). */
-    wanderMaxDistance: 80,
+    wanderMaxDistance: 100,
+    /** [가정] 짧게 이동하기에서 앞뒤 방향 비중 (1보다 크면 앞뒤로 더 많이 움직인다) */
+    wanderDepthFactor: 1.3,
     /**
      * [가정] 혼자 놀기에 쓰는 임시 소품. GDD 3장의 휴지심, 양말. 장난감 시스템이 생기면 교체.
      * [확정 2026-11-20] 놀고 나도 방에 그대로 남고, 앱을 나갔다 들어오면 치워져 있다.

@@ -59,7 +59,7 @@ export class RoomScene extends Phaser.Scene {
 
   /** 테스트용: 뭉치의 현재 위치를 브라우저 화면 좌표로 알려준다. */
   mungchiClientPoint(): { x: number; y: number } {
-    return this.worldToClient(this.mungchi.view.x, this.mungchi.view.y);
+    return this.worldToClient(this.mungchi.view.x, this.mungchi.view.screenY);
   }
 
   hotspotClientPoint(id: HotspotId): { x: number; y: number } | null {

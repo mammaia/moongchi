@@ -5,6 +5,7 @@ import { BALANCE } from '../../data/balance';
 import { MUNGCHI_FLOOR } from '../../data/room';
 import { point } from '../room/perspective';
 import { MungchiView } from './MungchiView';
+import { furnitureFrame, phaseMs, planFurniture, type FurnitureKind, type FurniturePhase, type FurniturePlan } from './furniture';
 import { gaitPose, walkSpeedFactor } from './gait';
 import { placeNewToy, planPlayMove, playFrame, type PlayFrame, type PlayMove } from './playMotion';
 import { ToyView } from './toys';
@@ -35,6 +36,8 @@ const inside = (area: Area, x: number | null, y: number | null): boolean =>
   x !== null && y !== null && x >= area.minX && x <= area.maxX && y >= area.minY && y <= area.maxY;
 
 const NAP = BALANCE.character.nap;
+/** 한 번 그릴 때 움직임을 계산하는 최대 시간 (밀리초) */
+const MAX_STEP_MS = 100;
 
 // brain의 행동 이름과 이벤트의 행동 이름이 어긋나면 여기서 타입 오류가 난다.
 const _sameNames: MungchiActivity = 'idle' as Activity;
@@ -53,7 +56,12 @@ export class MungchiController {
   private readonly modifiers: WeightModifier[] = [];
   private shown: { activity: Activity; settling: boolean } | null = null;
   /** 지금 걷는 길 (출발점과 출발 시각). 행동이 바뀌면 새로 잡는다. */
-  private trip: { from: { x: number; y: number }; since: number } | null = null;
+  private lastUpdateAt: number | null = null;
+  private trip: { from: { x: number; y: number }; since: number; startedAt: number } | null = null;
+  /** 지금 하고 있는 가구 쓰기 (침대에 올라가기, 책상 뒤에 숨기) */
+  private furn: { since: number; plan: FurniturePlan; phase: 'approach' | FurniturePhase; elapsed: number } | null = null;
+  /** 가구 위(또는 뒤)에 있는 중. 다른 곳으로 움직이기 전에 먼저 내려와야 한다. */
+  private perch: { plan: FurniturePlan; exitElapsed: number | null } | null = null;
   /** 방바닥에 놓인 장난감. 놀고 나도 남고, 앱을 나갔다 들어오면 치운다. */
   private readonly toys = new Map<PlayProp, ToyView>();
   /** 지금 하고 있는 놀이 동작 */
@@ -147,8 +155,12 @@ export class MungchiController {
     return { x: this.view.x, y: this.view.y };
   }
 
-  update(deltaMs: number): void {
+  update(frameMs: number): void {
     const now = this.ctx.clock.now();
+    // 움직임은 실제 흐른 시간으로 계산한다. 폰이 버벅여 화면이 덜 그려져도 뭉치 속도는 같다.
+    // (앱을 뒤로 보냈다 오면 시간이 크게 뛰므로 한 번에 최대 0.1초만 움직인다)
+    const deltaMs = this.lastUpdateAt === null ? frameMs : Math.min(MAX_STEP_MS, Math.max(0, now - this.lastUpdateAt));
+    this.lastUpdateAt = now;
     if (!this.frozen) {
       this.brain = tick(this.brain, now, Math.random, this.position, WANDER_AREA, this.modifiers);
     } else if (now >= this.brain.until) {
@@ -156,18 +168,110 @@ export class MungchiController {
       this.brain = { ...this.brain, activity: 'idle', since: now, until: Infinity, target: null, prop: null, settling: false };
     }
 
-    if (this.brain.activity === 'wander' && this.brain.target) {
-      this.walk(deltaMs, now);
+    this.syncView();
+    const activity = this.brain.activity;
+    if (this.groundFirst(deltaMs)) {
+      if (activity === 'wander' && this.brain.target) this.walk(deltaMs, now);
+      else if (activity === 'climb' || activity === 'hide') this.useFurniture(deltaMs, now, activity);
+      else if (activity === 'play' && this.brain.prop) this.play(deltaMs, this.brain.prop);
     }
     this.syncView();
-    if (this.brain.activity === 'play' && this.brain.prop) this.play(deltaMs, this.brain.prop);
     this.view.update(deltaMs);
   }
 
+  /** 지금 올라가(숨어) 있는 가구 (테스트·개발용) */
+  get onFurniture(): FurnitureKind | null {
+    return this.perch?.plan.kind ?? null;
+  }
+
+  /**
+   * 가구 위(뒤)에 있는데 다른 곳으로 움직여야 하면 먼저 내려온다(나온다).
+   * 쓰다듬기·낮잠·가만히 있기는 그 자리에서 해도 되므로 내려오지 않는다.
+   * 다 내려왔으면 true.
+   */
+  private groundFirst(deltaMs: number): boolean {
+    const p = this.perch;
+    const a = this.brain.activity;
+    if (!p) return true;
+    if (this.furn && this.furn.since === this.brain.since) return true; // 가구 쓰기 진행 중
+    if (a === 'happy' || a === 'sleep' || a === 'idle') return false;
+    p.exitElapsed = (p.exitElapsed ?? 0) + deltaMs;
+    const f = furnitureFrame(p.plan, 'exit', p.exitElapsed);
+    this.view.setPosition(f.pos.x, f.pos.y, f.lift);
+    this.view.setPose(f.pose, f.look);
+    this.view.setFace(f.face);
+    if (p.exitElapsed < phaseMs(p.plan, 'exit')) return false;
+    this.landOnFloor(p.plan);
+    return true;
+  }
+
+  /**
+   * 가구 쓰기가 중간에 끊겼다(쓰다듬기, 낮잠 등). 공중에 멈춰 있지 않도록 가까운 자리에 내려놓는다.
+   * 올라가는 중이면 가구 위로, 내려오는 중이면 바닥으로.
+   */
+  private settleFurniture(): void {
+    const f = this.furn;
+    if (f && f.since !== this.brain.since) {
+      this.furn = null;
+      if (f.phase === 'exit') this.landOnFloor(f.plan);
+      else if (f.phase !== 'approach') this.view.setPosition(f.plan.spot.x, f.plan.spot.y, f.plan.spotLift);
+    }
+    const p = this.perch;
+    if (p && p.exitElapsed !== null && !this.furn) {
+      if (this.brain.activity === 'happy' || this.brain.activity === 'sleep' || this.brain.activity === 'idle') this.landOnFloor(p.plan);
+    }
+  }
+
+  private landOnFloor(plan: FurniturePlan): void {
+    this.perch = null;
+    this.furn = null;
+    this.trip = null;
+    this.view.setPosition(plan.approach.x, plan.approach.y, 0);
+    this.view.setFace('normal');
+    this.savePosition();
+  }
+
+  /** 가구 쓰기: 가구 앞까지 걸어간 뒤, furniture.ts의 동작대로 올라가고(숨고) 머물다 돌아온다. */
+  private useFurniture(deltaMs: number, now: number, kind: FurnitureKind): void {
+    let f = this.furn;
+    if (!f || f.since !== this.brain.since) {
+      f = this.furn = { since: this.brain.since, plan: planFurniture(kind, Math.random), phase: 'approach', elapsed: 0 };
+      this.trip = null;
+    }
+    if (f.phase === 'approach') {
+      if (this.walkToward(f.plan.approach, deltaMs, now)) {
+        f.phase = 'enter';
+        f.elapsed = 0;
+        this.perch = { plan: f.plan, exitElapsed: null };
+      }
+      return;
+    }
+    f.elapsed += deltaMs;
+    const frame = furnitureFrame(f.plan, f.phase, f.elapsed);
+    this.view.setPosition(frame.pos.x, frame.pos.y, frame.lift);
+    this.view.setPose(frame.pose, frame.look);
+    this.view.setFace(frame.face);
+    if (f.elapsed < phaseMs(f.plan, f.phase)) return;
+    f.elapsed = 0;
+    if (f.phase === 'enter') f.phase = 'stay';
+    else if (f.phase === 'stay') f.phase = 'exit';
+    else {
+      this.landOnFloor(f.plan);
+      this.brain = arrived(this.brain, now, Math.random);
+    }
+  }
+
   private walk(deltaMs: number, now: number): void {
-    const target = this.brain.target!;
+    if (this.walkToward(this.brain.target!, deltaMs, now)) {
+      this.brain = arrived(this.brain, now, Math.random);
+      this.savePosition();
+    }
+  }
+
+  /** 걸음걸이 계산(gait.ts)대로 target까지 걷는다. 도착하면 true. */
+  private walkToward(target: { x: number; y: number }, deltaMs: number, now: number): boolean {
     if (!this.trip || this.trip.since !== this.brain.since) {
-      this.trip = { from: this.position, since: this.brain.since };
+      this.trip = { from: this.position, since: this.brain.since, startedAt: now };
     }
     const { x, y } = this.view;
     const dx = target.x - x;
@@ -175,19 +279,19 @@ export class MungchiController {
     const dist = Math.hypot(dx, dy);
     const total = Math.hypot(target.x - this.trip.from.x, target.y - this.trip.from.y);
     const traveled = Math.max(0, total - dist);
-    const speed = walkSpeedFactor(now - this.trip.since, traveled, total);
+    const speed = walkSpeedFactor(now - this.trip.startedAt, traveled, total);
     const step = (BALANCE.character.walkSpeed * speed * deltaMs) / 1000;
     if (dist < 0.5 || (speed > 0 && dist <= step)) {
       this.view.setPosition(target.x, target.y);
-      this.brain = arrived(this.brain, now, Math.random);
-      this.savePosition();
-    } else {
-      this.view.setPosition(x + (dx / dist) * step, y + (dy / dist) * step);
-      this.view.setPose(gaitPose(traveled, speed), dx / dist);
+      return true;
     }
+    this.view.setPosition(x + (dx / dist) * step, y + (dy / dist) * step);
+    this.view.setPose(gaitPose(traveled, speed), dx / dist);
+    return false;
   }
 
   private savePosition(): void {
+    if (this.perch) return; // 가구 위(뒤) 자리는 저장하지 않는다 (다시 열면 바닥에서 시작)
     this.ctx.store.update((d) => {
       d.character.x = Math.round(this.view.x);
       d.character.y = Math.round(this.view.y);
@@ -237,6 +341,7 @@ export class MungchiController {
     const prev = this.shown;
     if (prev && prev.activity === activity && prev.settling === settling) return;
     if (prev?.activity === 'play' && activity !== 'play') this.endPlay();
+    if (prev && prev.activity !== activity) this.settleFurniture();
     // 계속 쓰다듬는 중(좋아하기 → 좋아하기)에는 다시 그리지 않는다.
     if (!prev || prev.activity !== activity) this.view.setActivity(activity);
     this.shown = { activity, settling };

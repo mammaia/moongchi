@@ -15,12 +15,14 @@ import { BALANCE } from '../../data/balance';
  * 4) 잠, 놀이처럼 큰 행동은 끝난 뒤 한동안 다시 고르지 않는다 (cooldown).
  * 5) 켜자마자, 쓰다듬어진 직후에는 잠들지 않는다.
  */
-export type AutoActivity = 'idle' | 'wander' | 'play' | 'sleep';
+export type AutoActivity = 'idle' | 'wander' | 'play' | 'sleep' | 'climb' | 'hide';
 export type Reaction = 'happy';
 export type Activity = AutoActivity | Reaction;
 export type PlayProp = (typeof BALANCE.character.playProps)[number];
 
-export const AUTO_ACTIVITIES: readonly AutoActivity[] = ['idle', 'wander', 'play', 'sleep'];
+export const AUTO_ACTIVITIES: readonly AutoActivity[] = ['idle', 'wander', 'play', 'sleep', 'climb', 'hide'];
+/** 가구를 쓰는 행동: 가구까지 걸어간 뒤 정해진 동작을 하고, 다 하면 arrived()로 끝낸다. */
+export const FURNITURE_ACTIVITIES: readonly AutoActivity[] = ['climb', 'hide'];
 
 export interface Point {
   x: number;
@@ -126,9 +128,17 @@ export function pickWanderTarget(from: Point, rng: Rng, area: Area): Point {
   const angle = rng() * Math.PI * 2;
   // 너무 짧으면 움직였는지 모르니 최대 거리의 절반 이상은 간다.
   const dist = C.wanderMaxDistance * (0.5 + 0.5 * rng());
+  // 앞뒤(화면 위아래)로 더 많이 움직이도록 세로 성분을 키우고, 전체 거리는 최대 거리를 넘지 않게 맞춘다.
+  let dx = Math.cos(angle) * dist;
+  let dy = Math.sin(angle) * dist * C.wanderDepthFactor;
+  const len = Math.hypot(dx, dy);
+  if (len > C.wanderMaxDistance) {
+    dx *= C.wanderMaxDistance / len;
+    dy *= C.wanderMaxDistance / len;
+  }
   return {
-    x: clamp(from.x + Math.cos(angle) * dist, area.minX, area.maxX),
-    y: clamp(from.y + Math.sin(angle) * dist * 0.6, area.minY, area.maxY),
+    x: clamp(from.x + dx, area.minX, area.maxX),
+    y: clamp(from.y + dy, area.minY, area.maxY),
   };
 }
 
@@ -193,9 +203,9 @@ export function tick(
   return decideNext(brain, now, rng, from, area, modifiers);
 }
 
-/** 목적지에 도착했다. 잠깐 멈춰 선다. */
+/** 목적지에 도착했다(가구 쓰기는 다 하고 돌아왔다). 잠깐 멈춰 선다. */
 export function arrived(brain: BrainState, now: number, rng: Rng): BrainState {
-  if (brain.activity !== 'wander') return brain;
+  if (brain.activity !== 'wander' && !FURNITURE_ACTIVITIES.includes(brain.activity as AutoActivity)) return brain;
   return settle(finishCurrent(brain, now), now, C.settleMs, rng);
 }
 

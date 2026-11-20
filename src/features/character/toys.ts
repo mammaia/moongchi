@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { scaleAtY } from '../room/perspective';
+import { depthForFloorY, scaleAtY } from '../room/perspective';
 import type { PlayProp, Point } from './brain';
 
 /**
@@ -54,7 +54,7 @@ export class ToyView {
   private apply(spin: number): void {
     const s = scaleAtY(this.ground.y);
     this.node.setPosition(this.ground.x, this.ground.y).setScale(s);
-    this.node.setDepth(10 + this.ground.y / 1000 + 0.0005);
+    this.node.setDepth(depthForFloorY(this.ground.y) + 0.0005);
     this.art.setPosition(0, -this.lift).setAngle(this.angle + spin);
     this.shadow.setScale(Math.max(0.5, 1 - this.lift * 0.012));
   }

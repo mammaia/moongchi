@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { scaleAtY } from '../room/perspective';
+import { depthForFloorY, scaleAtY } from '../room/perspective';
 import { PHOTO_HIDDEN_KEY } from '../../core/photoLibrary';
 import { BALANCE } from '../../data/balance';
 import type { Activity } from './brain';
@@ -13,6 +13,9 @@ const INK = 0x3b3131;
 const BLUSH = 0xf7b8c4;
 const MOUTH = 0x8a4a4f;
 const TONGUE = 0xf58fa3;
+
+/** 몸짓을 걷기·놀기·가구 계산이 정하는 행동 */
+const MOVING: readonly Activity[] = ['wander', 'play', 'climb', 'hide'];
 
 const TEXT_STYLE = {
   fontFamily: 'system-ui, sans-serif',
@@ -42,8 +45,10 @@ export class MungchiView {
   /** 지금 표정 (놀 때 바뀐다) */
   private faceKind: Face = 'normal';
   private current: Activity = 'idle';
+  private groundY: number;
 
   constructor(private readonly scene: Phaser.Scene, x: number, y: number) {
+    this.groundY = y;
     this.shadow = scene.add.ellipse(0, R * 0.92, R * 1.7, R * 0.42, 0x8c7058, 0.18);
     const fur = scene.add.graphics();
     this.drawFur(fur);
@@ -66,12 +71,20 @@ export class MungchiView {
     return this.container.x;
   }
 
+  /** 바닥 위치 (침대 위에 올라가 있어도 그 아래 바닥 지점) */
   get y(): number {
+    return this.groundY;
+  }
+
+  /** 화면에 보이는 몸의 높이 (테스트에서 누를 때 쓴다) */
+  get screenY(): number {
     return this.container.y;
   }
 
-  setPosition(x: number, y: number): void {
-    this.container.setPosition(x, y);
+  /** 바닥 위치와, 바닥에서 올라간 높이(침대 위 등, 화면 px). 크기와 앞뒤 순서는 바닥 위치로 정한다. */
+  setPosition(x: number, y: number, lift = 0): void {
+    this.groundY = y;
+    this.container.setPosition(x, y - lift);
     this.applyDepthScale();
   }
 
@@ -82,7 +95,7 @@ export class MungchiView {
   setActivity(activity: Activity): void {
     this.lookTimer?.remove();
     this.lookTimer = undefined;
-    const wasWalking = this.current === 'wander' || this.current === 'play';
+    const wasWalking = MOVING.includes(this.current);
     this.faceKind = 'normal';
     this.current = activity;
     this.setSleeping(activity === 'sleep');
@@ -102,7 +115,7 @@ export class MungchiView {
           });
         },
       });
-    } else if (activity === 'wander' || activity === 'play') {
+    } else if (MOVING.includes(activity)) {
       // 방향과 몸짓은 걷기·놀기 계산이 setPose()로 정한다.
     } else {
       this.setLook(0);
@@ -111,7 +124,7 @@ export class MungchiView {
 
   /** 걷기·놀기: 가는(노는) 방향을 보고, 계산된 몸짓(gait.ts, playMotion.ts)대로 몸을 움직인다. */
   setPose(pose: GaitPose, dirX: number): void {
-    if (this.current !== 'wander' && this.current !== 'play') return;
+    if (!MOVING.includes(this.current)) return;
     this.setLook(dirX > 0.25 ? 1 : dirX < -0.25 ? -1 : 0);
     this.gait.setPosition(0, -pose.hop);
     this.gait.setAngle(pose.tilt);
@@ -185,14 +198,14 @@ export class MungchiView {
     for (let i = 0; i < 7; i++) {
       const angle = (Math.PI * 2 * i) / 7 - Math.PI / 2;
       const star = this.scene.add
-        .text(this.x, this.y - R * 0.4, '✦', { ...TEXT_STYLE, fontSize: '18px', color: '#f5c84c' })
+        .text(this.x, this.container.y - R * 0.4, '✦', { ...TEXT_STYLE, fontSize: '18px', color: '#f5c84c' })
         .setOrigin(0.5)
         .setDepth(20)
         .setData(PHOTO_HIDDEN_KEY, true); // 보상 반짝이는 UI라서 사진에는 안 나온다
       this.scene.tweens.add({
         targets: star,
         x: this.x + Math.cos(angle) * 70,
-        y: this.y - R * 0.4 + Math.sin(angle) * 70,
+        y: this.container.y - R * 0.4 + Math.sin(angle) * 70,
         alpha: 0,
         scale: 1.4,
         duration: 800,
@@ -203,9 +216,9 @@ export class MungchiView {
   }
 
   private applyDepthScale(): void {
-    const s = scaleAtY(this.container.y);
+    const s = scaleAtY(this.groundY);
     this.container.setScale(s);
-    this.container.setDepth(10 + this.container.y / 1000);
+    this.container.setDepth(depthForFloorY(this.groundY));
   }
 
   private blink(): void {
@@ -304,7 +317,7 @@ export class MungchiView {
 
   private floatText(text: string, color: string, size: number): void {
     const label = this.scene.add
-      .text(this.x + Phaser.Math.Between(-18, 18), this.y - R * this.container.scaleY, text, { ...TEXT_STYLE, fontSize: `${size}px`, color })
+      .text(this.x + Phaser.Math.Between(-18, 18), this.container.y - R * this.container.scaleY, text, { ...TEXT_STYLE, fontSize: `${size}px`, color })
       .setOrigin(0.5)
       .setDepth(20);
     this.scene.tweens.add({

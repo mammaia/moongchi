@@ -35,3 +35,9 @@ export function scaleAtY(y: number): number {
 }
 
 export const BACK_WALL = BACK;
+
+/**
+ * 바닥 위치(y)로 정하는 그리기 순서. 앞쪽(아래)에 있을수록 나중에 그려 앞에 보인다.
+ * 뭉치, 장난감, 뭉치를 가릴 수 있는 가구(책상)가 모두 이 규칙을 같이 쓴다.
+ */
+export const depthForFloorY = (y: number): number => 10 + y / 1000;
