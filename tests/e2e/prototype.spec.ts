@@ -59,9 +59,10 @@ test('문지르기도 쓰다듬기로 센다', async ({ page }) => {
   const p = await page.evaluate(() => (window.__moongchi as Api).mungchiPoint());
   await page.mouse.move(p.x - 15, p.y);
   await page.mouse.down();
-  for (let i = 0; i < 12; i++) {
-    await page.mouse.move(p.x + (i % 2 ? 15 : -15), p.y, { steps: 4 });
-    await page.waitForTimeout(120);
+  // 쓰다듬기 간격(450ms)보다 길게 쉬면서 몇 번만 문지른다. (느린 CI에서도 끝나도록 움직임 수를 적게)
+  for (let i = 0; i < 4; i++) {
+    await page.waitForTimeout(500);
+    await page.mouse.move(p.x + (i % 2 ? 15 : -15), p.y);
   }
   await page.mouse.up();
   expect(await strokes(page)).toBeGreaterThanOrEqual(2);

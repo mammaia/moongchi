@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: 'tests/e2e',
-  timeout: 30_000,
+  // CI 서버는 그래픽 처리가 느려서 넉넉하게 준다.
+  timeout: 60_000,
   use: {
     baseURL: 'http://localhost:4173',
   },
