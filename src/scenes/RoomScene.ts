@@ -44,6 +44,8 @@ export class RoomScene extends Phaser.Scene {
   }
 
   hotspotClientPoint(id: HotspotId): { x: number; y: number } | null {
+    const shape = this.room.hotspotShapes.get(id);
+    if (shape) return this.worldToClient(shape.tap.x, shape.tap.y);
     const b = this.room.hotspotBounds.get(id);
     if (!b) return null;
     return this.worldToClient(b.x + b.width / 2, b.y + b.height / 2);

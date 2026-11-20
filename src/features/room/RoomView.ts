@@ -28,9 +28,47 @@ const COLOR = {
   counterTop: 0xf4f0ea,
   counter: 0xdcd4c6,
   counterSide: 0xcac1b1,
+  steel: 0xc9d3d8,
+  steelDark: 0x9aa6ad,
+  burner: 0x3d3a3a,
+  fridge: 0xf1f5f4,
+  fridgeSide: 0xdfe7e6,
+  paper: 0xfffdf6,
+  pen: 0x6c8fd6,
+  mug: 0xf6d4a8,
   door: 0xeadcc6,
   mat: 0xd9b7d9,
 } as const;
+
+/** 점들을 감싸는 볼록 다각형 (물건 모양대로 누를 수 있게). */
+const hullOf = (pts: Pt[]): Pt[] => {
+  const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: Pt[] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: Pt[] = [];
+  for (const q of [...p].reverse()) {
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+};
+
+const centroidOf = (poly: Pt[]): Pt => {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % poly.length];
+    const f = p.x * q.y - q.x * p.y;
+    a += f;
+    cx += (p.x + q.x) * f;
+    cy += (p.y + q.y) * f;
+  }
+  return a === 0 ? poly[0] : { x: cx / (3 * a), y: cy / (3 * a) };
+};
 
 const boundsOf = (pts: Pt[], pad = 6): Bounds => {
   const xs = pts.map((p) => p.x);
@@ -46,6 +84,8 @@ const boundsOf = (pts: Pt[], pad = 6): Bounds => {
  */
 export class RoomView {
   readonly hotspotBounds = new Map<HotspotId, Bounds>();
+  /** 물건 모양 그대로의 누르는 영역과, 그 안의 대표 지점 */
+  readonly hotspotShapes = new Map<HotspotId, { hull: Pt[]; tap: Pt }>();
   private readonly g: Phaser.GameObjects.Graphics;
 
   constructor(private readonly scene: Phaser.Scene) {
@@ -56,7 +96,7 @@ export class RoomView {
     this.drawBed();
     this.drawDesk();
     this.drawCounter();
-    this.drawShoes();
+    this.drawFridge();
     this.drawEntrance();
   }
 
@@ -64,11 +104,17 @@ export class RoomView {
   createHotspots(onTap: (id: HotspotId) => void): Phaser.GameObjects.Zone[] {
     const zones: Phaser.GameObjects.Zone[] = [];
     for (const [id, b] of this.hotspotBounds) {
+      const shape = this.hotspotShapes.get(id);
       const zone = this.scene.add
         .zone(b.x + b.width / 2, b.y + b.height / 2, b.width, b.height)
-        .setInteractive({ useHandCursor: true })
         .setDepth(1)
         .setName(`hotspot-${id}`);
+      if (shape) {
+        const local = new Phaser.Geom.Polygon(shape.hull.map((p) => new Phaser.Geom.Point(p.x - b.x, p.y - b.y)));
+        zone.setInteractive({ hitArea: local, hitAreaCallback: Phaser.Geom.Polygon.Contains, useHandCursor: true });
+      } else {
+        zone.setInteractive({ useHandCursor: true });
+      }
       // 같은 물건 위에서 눌렀다 뗐을 때만 '탭'으로 본다. (문지르다 지나가는 것은 무시)
       let pressed = false;
       zone.on('pointerdown', () => (pressed = true));
@@ -80,7 +126,7 @@ export class RoomView {
       zones.push(zone);
 
       const labelY = id === 'entrance' ? b.y + b.height / 2 : b.y + 4;
-      this.scene.add
+      const label = this.scene.add
         .text(b.x + b.width / 2, labelY, HOTSPOTS[id].label, {
           fontFamily: 'system-ui, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif',
           fontSize: '11px',
@@ -91,8 +137,18 @@ export class RoomView {
         })
         .setOrigin(0.5)
         .setDepth(2);
+      // 화면 가장자리에서 이름표가 잘리지 않게 안쪽으로 당긴다.
+      const half = label.width / 2 + 4;
+      label.x = Phaser.Math.Clamp(label.x, half, WORLD.width - half);
     }
     return zones;
+  }
+
+  /** tap: 물건이 겹칠 때 확실히 그 물건이 눌리는 대표 지점 (없으면 모양의 중심). */
+  private register(id: HotspotId, pts: Pt[], tap?: Pt): void {
+    const hull = hullOf(pts);
+    this.hotspotBounds.set(id, boundsOf(pts));
+    this.hotspotShapes.set(id, { hull, tap: tap ?? centroidOf(hull) });
   }
 
   private poly(pts: Pt[], color: number, alpha = 1, stroke = true): void {
@@ -104,15 +160,16 @@ export class RoomView {
     }
   }
 
-  /** 바닥에 놓인 상자: 윗면, 앞면, 안쪽 옆면을 그린다. */
+  /** 바닥(또는 h0 높이)에 놓인 상자: 윗면, 앞면, 안쪽 옆면을 그린다. */
   private box(
     u0: number, u1: number, t0: number, t1: number, h: number,
     colors: { top: number; front: number; side: number },
     visibleSide: 'left' | 'right',
+    h0 = 0,
   ): Pt[] {
     const sideU = visibleSide === 'left' ? u0 : u1;
-    const side = [point(sideU, t0), point(sideU, t1), point(sideU, t1, h), point(sideU, t0, h)];
-    const front = [point(u0, t1), point(u1, t1), point(u1, t1, h), point(u0, t1, h)];
+    const side = [point(sideU, t0, h0), point(sideU, t1, h0), point(sideU, t1, h), point(sideU, t0, h)];
+    const front = [point(u0, t1, h0), point(u1, t1, h0), point(u1, t1, h), point(u0, t1, h)];
     const top = [point(u0, t0, h), point(u1, t0, h), point(u1, t1, h), point(u0, t1, h)];
     this.poly(side, colors.side);
     this.poly(front, colors.front);
@@ -137,7 +194,7 @@ export class RoomView {
   }
 
   private drawWindow(): void {
-    const frame = { x: 140, y: 196, w: 110, h: 132 };
+    const frame = { x: 135, y: 165, w: 120, h: 130 };
     this.g.fillStyle(COLOR.white, 1).fillRoundedRect(frame.x - 6, frame.y - 6, frame.w + 12, frame.h + 12, 6);
     this.g.fillStyle(COLOR.sky, 1).fillRect(frame.x, frame.y, frame.w, frame.h);
     // 구름 한 조각 (날씨는 4단계에서 연결)
@@ -163,53 +220,133 @@ export class RoomView {
     this.g.strokePoints(door, true);
     const knob = at(t0 + 0.05, 0.3);
     this.g.fillStyle(COLOR.woodDark, 1).fillCircle(knob.x - 2, knob.y, 3);
-    this.hotspotBounds.set('bathroom', boundsOf(door, 10));
+    // 문이 비스듬해서 가늘게 보이므로, 누르는 영역은 오른쪽(화살표 쪽)으로 넉넉히 넓힌다.
+    this.register('bathroom', [...door, ...door.map((p) => ({ x: p.x + 22, y: p.y }))]);
   }
 
   private drawBed(): void {
     // 왼쪽 안쪽. 머리판을 먼저 그리고 그 앞에 매트리스, 이불, 베개.
-    const head = [point(0.02, 0, 0), point(0.4, 0, 0), point(0.4, 0, 0.2), point(0.02, 0, 0.2)];
+    const head = [point(0.02, 0, 0), point(0.34, 0, 0), point(0.34, 0, 0.2), point(0.02, 0, 0.2)];
     this.poly(head, COLOR.wood);
-    const pts = this.box(0.02, 0.4, 0.0, 0.3, 0.1, { top: COLOR.white, front: COLOR.wood, side: COLOR.woodDark }, 'right');
-    const blanket = [point(0.02, 0.1, 0.1), point(0.4, 0.1, 0.1), point(0.4, 0.3, 0.1), point(0.02, 0.3, 0.1)];
+    const pts = this.box(0.02, 0.34, 0.0, 0.32, 0.1, { top: COLOR.white, front: COLOR.wood, side: COLOR.woodDark }, 'right');
+    const blanket = [point(0.02, 0.1, 0.1), point(0.34, 0.1, 0.1), point(0.34, 0.32, 0.1), point(0.02, 0.32, 0.1)];
     this.poly(blanket, COLOR.blanket);
-    const pillow = point(0.21, 0.04, 0.11);
+    const pillow = point(0.18, 0.04, 0.11);
     this.g.fillStyle(COLOR.white, 1).fillEllipse(pillow.x, pillow.y, 52, 14);
     this.g.lineStyle(1, COLOR.line, 0.5).strokeEllipse(pillow.x, pillow.y, 52, 14);
-    this.hotspotBounds.set('bed', boundsOf([...pts, ...head]));
+    this.register('bed', [...pts, ...head]);
   }
 
   private drawDesk(): void {
-    // 오른쪽 안쪽, 창문 옆
-    const desk = this.box(0.66, 0.98, 0.0, 0.14, 0.2, { top: COLOR.wood, front: COLOR.woodDark, side: COLOR.woodDark }, 'left');
-    const base = point(0.82, 0.04, 0.2);
-    this.g.fillStyle(COLOR.monitor, 1).fillRoundedRect(base.x - 26, base.y - 40, 52, 34, 3);
-    this.g.fillStyle(COLOR.screen, 1).fillRect(base.x - 22, base.y - 36, 44, 26);
-    this.g.fillStyle(COLOR.monitor, 1).fillRect(base.x - 3, base.y - 6, 6, 6);
-    // 의자
-    const chair = this.box(0.72, 0.88, 0.2, 0.26, 0.09, { top: COLOR.chair, front: 0xd99a74, side: 0xd99a74 }, 'left');
-    const back = [point(0.72, 0.26, 0.09), point(0.88, 0.26, 0.09), point(0.88, 0.26, 0.2), point(0.72, 0.26, 0.2)];
-    this.poly(back, COLOR.chair);
-    this.hotspotBounds.set('desk', boundsOf([...desk, ...chair, ...back, { x: base.x, y: base.y - 40 }]));
+    // 오른쪽 안쪽, 창문 옆. 모니터는 침대(왼쪽)를 향하고, 의자는 책상 왼쪽에서 모니터를 바라본다.
+    const H = 0.2; // 책상 높이
+    const desk = this.box(0.68, 0.98, 0.0, 0.16, H, { top: COLOR.wood, front: COLOR.woodDark, side: COLOR.woodDark }, 'left');
+    // 모니터: 책상 오른쪽 안 모서리에서 비스듬히 놓아 화면이 왼쪽 앞(침대 쪽)을 보게 한다.
+    const m0 = { u: 0.84, t: 0.01 };
+    const m1 = { u: 0.96, t: 0.1 };
+    const lerp = (k: number) => ({ u: m0.u + (m1.u - m0.u) * k, t: m0.t + (m1.t - m0.t) * k });
+    const quad = (k0: number, k1: number, h0: number, h1: number) => {
+      const a = lerp(k0);
+      const b = lerp(k1);
+      return [point(a.u, a.t, h0), point(b.u, b.t, h0), point(b.u, b.t, h1), point(a.u, a.t, h1)];
+    };
+    this.poly(quad(0.45, 0.55, H, H + 0.05), COLOR.monitor);
+    const bezel = quad(0, 1, H + 0.05, H + 0.19);
+    this.poly(bezel, COLOR.monitor);
+    this.poly(quad(0.06, 0.94, H + 0.062, H + 0.178), COLOR.screen, 1, false);
+    // 모니터 아래 책상 위: 펼친 노트, 펜, 머그컵
+    const note = [point(0.71, 0.05, H), point(0.84, 0.05, H), point(0.84, 0.13, H), point(0.71, 0.13, H)];
+    this.poly(note, COLOR.paper);
+    const spine = [point(0.775, 0.05, H), point(0.775, 0.13, H)];
+    this.g.lineStyle(1, COLOR.line, 0.8).lineBetween(spine[0].x, spine[0].y, spine[1].x, spine[1].y);
+    this.g.lineStyle(1, COLOR.screen, 0.9);
+    for (const tt of [0.07, 0.09, 0.11]) {
+      const a = point(0.72, tt, H);
+      const b = point(0.765, tt, H);
+      this.g.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    const penA = point(0.79, 0.07, H);
+    const penB = point(0.83, 0.115, H);
+    this.g.lineStyle(2, COLOR.pen, 1).lineBetween(penA.x, penA.y, penB.x, penB.y);
+    const pencilA = point(0.85, 0.06, H);
+    const pencilB = point(0.88, 0.1, H);
+    this.g.lineStyle(2, 0xf2c14e, 1).lineBetween(pencilA.x, pencilA.y, pencilB.x, pencilB.y);
+    const mug = point(0.88, 0.13, H);
+    this.g.fillStyle(COLOR.mug, 1).fillRoundedRect(mug.x - 5, mug.y - 11, 10, 11, 2);
+    this.g.lineStyle(1.5, COLOR.mug, 1).strokeCircle(mug.x + 6, mug.y - 6, 3);
+    // 의자: 책상 왼쪽에서 모니터를 바라본다. 다리 4개 + 방석 + 등받이
+    const legs: [number, number][] = [[0.585, 0.045], [0.645, 0.045], [0.585, 0.115], [0.645, 0.115]];
+    this.g.lineStyle(2, COLOR.woodDark, 1);
+    for (const [u, t] of legs) {
+      const a = point(u, t, 0);
+      const b = point(u, t, 0.085);
+      this.g.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    const seat = this.box(0.58, 0.65, 0.04, 0.12, 0.1, { top: COLOR.chair, front: 0xd99a74, side: 0xd99a74 }, 'left', 0.085);
+    const back = this.box(0.575, 0.59, 0.045, 0.115, 0.27, { top: COLOR.chair, front: 0xd99a74, side: COLOR.chair }, 'left', 0.1);
+    this.register('desk', [...desk, ...bezel, ...seat, ...back]);
   }
 
   private drawCounter(): void {
-    const pts = this.box(0.82, 1.0, 0.34, 0.62, 0.26, { top: COLOR.counterTop, front: COLOR.counter, side: COLOR.counterSide }, 'left');
-    // 가스레인지 표시
-    const burner = point(0.91, 0.44, 0.26);
-    this.g.lineStyle(2, 0x8a8a8a, 0.8).strokeEllipse(burner.x, burner.y, 22, 8);
-    this.hotspotBounds.set('counter', boundsOf(pts));
+    // 한국 원룸식 조리대: 안쪽에 2구 가스레인지, 앞쪽에 싱크대, 옆면에 수납장과 레인지 손잡이
+    const H = 0.26;
+    const pts = this.box(0.8, 1.0, 0.3, 0.62, H, { top: COLOR.counterTop, front: COLOR.counter, side: COLOR.counterSide }, 'left');
+    // 수납장 문
+    this.g.lineStyle(1, COLOR.line, 0.7);
+    for (const t of [0.4, 0.51]) {
+      const a = point(0.8, t, 0.02);
+      const b = point(0.8, t, H - 0.05);
+      this.g.lineBetween(a.x, a.y, b.x, b.y);
+    }
+    const knobRow = (t: number) => point(0.8, t, H - 0.025);
+    this.g.fillStyle(COLOR.burner, 1);
+    for (const t of [0.33, 0.37]) {
+      const k = knobRow(t);
+      this.g.fillCircle(k.x, k.y, 2.2);
+    }
+    // 가스레인지 판과 화구 2개
+    const range = [point(0.82, 0.31, H), point(0.98, 0.31, H), point(0.98, 0.44, H), point(0.82, 0.44, H)];
+    this.poly(range, 0x2f2d2d, 1, false);
+    for (const [u, t] of [[0.87, 0.36], [0.93, 0.4]] as const) {
+      const c = point(u, t, H);
+      this.g.lineStyle(2, 0x8a8a8a, 1).strokeEllipse(c.x, c.y, 16, 6);
+      this.g.lineStyle(1, 0x8a8a8a, 1).lineBetween(c.x - 9, c.y, c.x + 9, c.y);
+    }
+    // 싱크대와 수도꼭지
+    const sink = [point(0.83, 0.48, H), point(0.96, 0.48, H), point(0.96, 0.59, H), point(0.83, 0.59, H)];
+    this.poly(sink, COLOR.steel);
+    const inner = [point(0.85, 0.5, H), point(0.94, 0.5, H), point(0.94, 0.57, H), point(0.85, 0.57, H)];
+    this.poly(inner, COLOR.steelDark, 1, false);
+    const tapBase = point(0.985, 0.53, H);
+    const tapTop = point(0.985, 0.53, H + 0.06);
+    this.g.lineStyle(3, COLOR.steelDark, 1).lineBetween(tapBase.x, tapBase.y, tapTop.x, tapTop.y);
+    const spout = point(0.95, 0.53, H + 0.06);
+    this.g.lineBetween(tapTop.x, tapTop.y, spout.x, spout.y);
+    // 앞쪽 아랫부분은 냉장고에 가려지므로 대표 지점은 조리대 윗면 가운데.
+    this.register('counter', [...pts, tapTop], point(0.9, 0.46, H));
   }
 
-  private drawShoes(): void {
-    const pts = this.box(0.84, 1.0, 0.8, 0.97, 0.18, { top: COLOR.wood, front: COLOR.woodDark, side: COLOR.woodDark }, 'left');
-    this.hotspotBounds.set('shoes', boundsOf(pts));
+  private drawFridge(): void {
+    // [확정] 신발장 대신 1인 가구용 작은 냉장고. 문은 방 안쪽(왼쪽)을 향한다.
+    const H = 0.27;
+    const pts = this.box(0.86, 1.0, 0.76, 0.86, H, { top: COLOR.fridgeSide, front: COLOR.fridgeSide, side: COLOR.fridge }, 'left');
+    const split = 0.19;
+    const a = point(0.86, 0.76, split);
+    const b = point(0.86, 0.86, split);
+    this.g.lineStyle(1.5, COLOR.line, 0.8).lineBetween(a.x, a.y, b.x, b.y);
+    // 손잡이 (위 칸, 아래 칸)
+    for (const [h0, h1] of [[0.205, 0.25], [0.11, 0.165]] as const) {
+      const p0 = point(0.86, 0.84, h0);
+      const p1 = point(0.86, 0.84, h1);
+      this.g.lineStyle(3, COLOR.steelDark, 1).lineBetween(p0.x - 1, p0.y, p1.x - 1, p1.y);
+    }
+    this.register('fridge', pts);
   }
 
   private drawEntrance(): void {
     const mat = [point(0.32, 0.9), point(0.68, 0.9), point(0.7, 0.99), point(0.3, 0.99)];
     this.poly(mat, COLOR.mat, 0.9);
     // 화면 맨 아래가 현관(보는 사람이 서 있는 곳)이다.
-    this.hotspotBounds.set('entrance', boundsOf(mat, 4));
+    this.register('entrance', mat);
   }
 }
