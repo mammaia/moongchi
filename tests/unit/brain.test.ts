@@ -5,6 +5,7 @@ import {
   decideNext,
   force,
   initialBrain,
+  nap,
   petted,
   pickWanderTarget,
   tick,
@@ -42,14 +43,14 @@ function simulate(ms: number, rng = seeded(7)) {
 }
 
 describe('뭉치 자율 행동: 고르기', () => {
-  it('네 가지 행동(가만히, 짧게 이동, 혼자 놀기, 잠들기)을 모두 고를 수 있다', () => {
+  it('평소에는 가만히 있기, 짧게 이동하기, 혼자 놀기를 스스로 고르고, 잠은 스스로 고르지 않는다', () => {
     const w = weightsFor(ready(), 1_000_000);
     expect(w.idle).toBeGreaterThan(0);
     expect(w.wander).toBeGreaterThan(0);
     expect(w.play).toBeGreaterThan(0);
-    expect(w.sleep).toBeGreaterThan(0);
+    expect(w.sleep).toBe(0);
     const seen = new Set(simulate(30 * 60_000).map((b) => b.activity));
-    expect([...seen].sort()).toEqual(['idle', 'play', 'sleep', 'wander']);
+    expect([...seen].sort()).toEqual(['idle', 'play', 'wander']);
   });
 
   it('행동 시간이 끝나기 전에는 바꾸지 않는다', () => {
@@ -87,24 +88,16 @@ describe('뭉치 자율 행동: 고르기', () => {
     }
   });
 
-  it('잠에서 깬 뒤 한동안은 다시 잠들지 않는다', () => {
-    const sleeping = force(ready(), 'sleep', 0, seq(0.5), here, area);
-    const woke = decideNext(sleeping, sleeping.until, seq(0.5), here, area);
-    expect(weightsFor(woke, sleeping.until + 1000).sleep).toBe(0);
-    // 그사이 다른 행동을 했다면, 쉬는 시간이 지난 뒤엔 다시 잘 수 있다
-    const later = { ...woke, history: [...woke.history, 'idle' as const] };
-    expect(weightsFor(later, sleeping.until + B.sleep.cooldownMs).sleep).toBeGreaterThan(0);
-  });
 
-  it('게임을 켜자마자는 잠들지 않는다', () => {
-    const b = initialBrain(0);
-    expect(weightsFor(b, 1000).sleep).toBe(0);
-    expect(weightsFor(b, BALANCE.character.noSleepAfterStartMs).sleep).toBeGreaterThan(0);
-  });
 
-  it('30분 동안 행동이 너무 자주 바뀌지 않는다 (평균 3초 이상)', () => {
+  it('아기·강아지처럼 자주 바뀌지만, 매 순간 바뀌지는 않는다', () => {
     const log = simulate(30 * 60_000);
-    expect((30 * 60_000) / log.length).toBeGreaterThan(3000);
+    const avg = (30 * 60_000) / log.length;
+    expect(avg).toBeGreaterThan(1000);
+    expect(avg).toBeLessThan(6000);
+    for (let i = 1; i < log.length; i++) {
+      expect(log[i].since - log[i - 1].since).toBeGreaterThanOrEqual(250);
+    }
   });
 });
 
@@ -177,20 +170,39 @@ describe('뭉치 자율 행동: 쓰다듬기와 충돌하지 않기', () => {
     expect(next.settling).toBe(false);
   });
 
-  it('쓰다듬어진 직후에는 잠들지 않는다', () => {
-    const h = petted(ready(0), 0);
-    expect(weightsFor(h, 1000).sleep).toBe(0);
-    expect(weightsFor(h, BALANCE.character.pet.noSleepMs).sleep).toBeGreaterThan(0);
+});
+
+describe('뭉치 낮잠', () => {
+  it('낮잠을 자면 정해진 짧은 시간 동안 잔다', () => {
+    const n = nap(ready(0), 0, seq(0.5));
+    expect(n.activity).toBe('sleep');
+    expect(n.until - n.since).toBeGreaterThanOrEqual(BALANCE.character.nap.durationMs[0]);
+    expect(n.until - n.since).toBeLessThanOrEqual(BALANCE.character.nap.durationMs[1]);
+  });
+
+  it('낮잠에서 깨면 다시 깨어 있는 행동으로 돌아간다', () => {
+    const n = nap(ready(0), 0, seq(0.5));
+    let b = tick(n, n.until, seq(0.5), here, area);
+    expect(b.activity).toBe('idle');
+    for (let t = n.until; t < n.until + 10 * 60_000; t += 250) {
+      b = tick(b, t, Math.random, here, area);
+      expect(b.activity).not.toBe('sleep');
+      if (b.activity === 'wander') b = arrived(b, t, Math.random);
+    }
+  });
+
+  it('낮잠 중에도 쓰다듬으면 바로 깬다', () => {
+    expect(petted(nap(ready(0), 0, seq(0.5)), 100).activity).toBe('happy');
   });
 });
 
 describe('뭉치 자율 행동: 확장 지점', () => {
   it('나중 시스템(날씨 등)이 배율로 행동 비중을 바꿀 수 있다', () => {
-    const rainy = (a: string) => (a === 'sleep' ? 3 : 1);
+    const rainy = (a: string) => (a === 'idle' ? 3 : 1);
     const base = weightsFor(ready(), 1_000_000);
     const withRain = weightsFor(ready(), 1_000_000, [rainy]);
-    expect(withRain.sleep).toBe(base.sleep * 3);
-    expect(withRain.idle).toBe(base.idle);
+    expect(withRain.idle).toBe(base.idle * 3);
+    expect(withRain.play).toBe(base.play);
   });
 
   it('배율 0이면 그 행동은 고르지 않는다', () => {

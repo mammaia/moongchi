@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { scaleAtY } from '../room/perspective';
 import { BALANCE } from '../../data/balance';
-import type { Activity, PlayProp } from './brain';
+import type { Activity } from './brain';
 import type { GaitPose } from './gait';
 
 const R = 44; // 기본 반지름
@@ -35,9 +35,6 @@ export class MungchiView {
   private look = 0;
   private lookTarget = 0;
   private lookTimer?: Phaser.Time.TimerEvent;
-  /** 혼자 놀기 중에 쓰는 임시 소품과 움직임 */
-  private prop?: Phaser.GameObjects.Graphics;
-  private playTweens: Phaser.Tweens.Tween[] = [];
   private current: Activity = 'idle';
 
   constructor(private readonly scene: Phaser.Scene, x: number, y: number) {
@@ -76,11 +73,10 @@ export class MungchiView {
    * 행동에 맞는 모습으로 바꾼다. 행동이 바뀔 때만 부른다.
    * [임시 그림] 놀기·두리번거리기는 도형과 움직임으로만 표현한 임시 애니메이션.
    */
-  setActivity(activity: Activity, prop: PlayProp | null = null): void {
-    this.stopPlay();
+  setActivity(activity: Activity): void {
     this.lookTimer?.remove();
     this.lookTimer = undefined;
-    const wasWalking = this.current === 'wander';
+    const wasWalking = this.current === 'wander' || this.current === 'play';
     this.current = activity;
     this.setSleeping(activity === 'sleep');
     if (wasWalking) this.land();
@@ -99,18 +95,16 @@ export class MungchiView {
           });
         },
       });
-    } else if (activity === 'wander') {
-      // 방향은 걷기 시작할 때 walkPose()가 정한다.
-    } else if (activity === 'play' && prop) {
-      this.startPlay(prop);
+    } else if (activity === 'wander' || activity === 'play') {
+      // 방향과 몸짓은 걷기·놀기 계산이 setPose()로 정한다.
     } else {
       this.setLook(0);
     }
   }
 
-  /** 짧게 이동하기: 가는 방향을 보고, 걸음걸이 계산(gait.ts) 결과대로 몸을 움직인다. */
-  walkPose(pose: GaitPose, dirX: number): void {
-    if (this.current !== 'wander') return;
+  /** 걷기·놀기: 가는(노는) 방향을 보고, 계산된 몸짓(gait.ts, playMotion.ts)대로 몸을 움직인다. */
+  setPose(pose: GaitPose, dirX: number): void {
+    if (this.current !== 'wander' && this.current !== 'play') return;
     this.setLook(dirX > 0.25 ? 1 : dirX < -0.25 ? -1 : 0);
     this.gait.setPosition(0, -pose.hop);
     this.gait.setAngle(pose.tilt);
@@ -138,44 +132,6 @@ export class MungchiView {
     this.shadow.setScale(1);
     this.gait.setScale(1.05, 0.94);
     this.scene.tweens.add({ targets: this.gait, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
-  }
-
-  /** [임시 그림] 혼자 놀기: 옆에 소품이 나타나고, 뭉치가 소품을 툭툭 치며 들썩인다. */
-  private startPlay(prop: PlayProp): void {
-    const g = this.scene.add.graphics();
-    this.drawProp(g, prop);
-    g.setPosition(R * 1.25, R * 0.62);
-    this.container.add(g);
-    this.prop = g;
-    this.setLook(1);
-    this.playTweens = [
-      // 소품 쪽으로 몸을 기울이며 통통
-      this.scene.tweens.add({ targets: this.body, angle: 7, y: -5, duration: 320, yoyo: true, repeat: -1, repeatDelay: 300, ease: 'Sine.easeInOut' }),
-      // 소품이 굴러갔다 돌아온다
-      this.scene.tweens.add({ targets: g, x: R * 1.7, angle: 70, duration: 520, yoyo: true, repeat: -1, repeatDelay: 120, ease: 'Sine.easeInOut' }),
-    ];
-  }
-
-  private stopPlay(): void {
-    for (const t of this.playTweens) t.remove();
-    this.playTweens = [];
-    this.body.angle = 0;
-    this.body.y = 0;
-    this.prop?.destroy();
-    this.prop = undefined;
-  }
-
-  private drawProp(g: Phaser.GameObjects.Graphics, prop: PlayProp): void {
-    if (prop === 'tissue-roll') {
-      // 휴지심: 옆으로 누운 갈색 원통
-      g.fillStyle(0xd9b48a, 1).fillRoundedRect(-12, -8, 24, 16, 4);
-      g.fillStyle(0xc39a6b, 1).fillEllipse(12, 0, 8, 16);
-      g.fillStyle(0x8f6d4b, 1).fillEllipse(12, 0, 4, 10);
-    } else {
-      // 양말: 줄무늬 양말 한 짝
-      g.fillStyle(0xf4a7b9, 1).fillRoundedRect(-6, -14, 11, 20, 3).fillRoundedRect(-6, 0, 18, 9, 4);
-      g.fillStyle(0xffffff, 1).fillRect(-6, -9, 11, 3).fillRect(-6, -3, 11, 3);
-    }
   }
 
   private setSleeping(value: boolean): void {

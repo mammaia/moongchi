@@ -9,12 +9,17 @@ type Api = {
   activity: () => Activity;
   settling: () => boolean;
   forceActivity: (a: Exclude<Activity, 'happy'>) => void;
+  toys: () => string[];
+  resume: (awayMs: number) => void;
+  hotspotPoint: (id: string) => { x: number; y: number } | null;
 };
 const api = (page: Page) => ({
   activity: () => page.evaluate(() => (window.__moongchi as Api).activity()),
   point: () => page.evaluate(() => (window.__moongchi as Api).mungchiPoint()),
   force: (a: Exclude<Activity, 'happy'>) => page.evaluate((x) => (window.__moongchi as Api).forceActivity(x), a),
   sparkle: () => page.evaluate(() => (window.__moongchi as Api).state().wallet.sparkle),
+  toys: () => page.evaluate(() => (window.__moongchi as Api).toys()),
+  resume: (ms: number) => page.evaluate((x) => (window.__moongchi as Api).resume(x), ms),
 });
 
 async function open(page: Page, { frozen }: { frozen: boolean }, query = '') {
@@ -22,6 +27,8 @@ async function open(page: Page, { frozen }: { frozen: boolean }, query = '') {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/${query}`);
   await page.waitForFunction(() => (window.__moongchi as Api | undefined)?.ready());
+  // 화면 크기 맞추기를 기다리는 동안 스스로 놀기 시작하지 않도록 먼저 멈춘다.
+  if (frozen) await page.evaluate(() => (window.__moongchi as Api).freezeMungchi(true));
   // 느린 CI에서는 게임이 켜진 뒤에도 화면 크기 맞추기가 조금 늦게 끝난다.
   // 캔버스 위치가 두 번 연속 같을 때까지 기다려야 뭉치를 정확히 누를 수 있다.
   await page.waitForFunction(
@@ -35,7 +42,6 @@ async function open(page: Page, { frozen }: { frozen: boolean }, query = '') {
     undefined,
     { polling: 150 },
   );
-  if (frozen) await page.evaluate(() => (window.__moongchi as Api).freezeMungchi(true));
   return errors;
 }
 
@@ -60,9 +66,13 @@ test('짧게 이동하기를 하면 실제로 자리가 바뀐다', async ({ pag
   const m = api(page);
   const before = await m.point();
   await m.force('wander');
-  await page.waitForTimeout(1500);
-  const after = await m.point();
-  expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(3);
+  // 출발 전에 방향을 먼저 보고(0.45초) 천천히 출발하므로, 몇 초 안에 움직이는지 지켜본다.
+  await expect
+    .poll(async () => {
+      const after = await m.point();
+      return Math.hypot(after.x - before.x, after.y - before.y);
+    }, { timeout: 8000 })
+    .toBeGreaterThan(3);
 });
 
 test('자는 뭉치를 쓰다듬으면 깨서 좋아하고, 스파클도 그대로 받는다', async ({ page }) => {
@@ -111,4 +121,40 @@ test('개발자 패널에서 뭉치 행동을 바꿔 볼 수 있다', async ({ p
   await page.getByRole('button', { name: '뭉치: 혼자 놀기' }).click();
   await expect(page.locator('.dev-panel')).toContainText('혼자 놀기');
   expect(await api(page).activity()).toBe('play');
+});
+
+test('놀던 장난감은 놀기가 끝나도 방에 남는다', async ({ page }) => {
+  const errors = await open(page, { frozen: true });
+  const m = api(page);
+  await m.force('play');
+  await page.waitForTimeout(1500);
+  expect((await m.toys()).length).toBe(1);
+  await petOnce(page); // 놀기를 끊어도
+  expect(await m.activity()).toBe('happy');
+  await page.waitForTimeout(500);
+  expect((await m.toys()).length).toBe(1); // 장난감은 그대로
+  expect(errors).toEqual([]);
+});
+
+test('앱을 나갔다 들어오면 장난감은 치워져 있고, 오래 나가 있었다면 자고 있다', async ({ page }) => {
+  await open(page, { frozen: true });
+  const m = api(page);
+  await m.force('play');
+  await page.waitForTimeout(800);
+  expect((await m.toys()).length).toBe(1);
+  await m.resume(5_000); // 잠깐 나갔다 옴
+  expect(await m.toys()).toEqual([]);
+  expect(await m.activity()).not.toBe('sleep');
+  await m.resume(10 * 60_000); // 오래 나갔다 옴
+  expect(await m.activity()).toBe('sleep');
+  await petOnce(page);
+  expect(await m.activity()).toBe('happy');
+});
+
+test('책상(다이어리)을 열면 뭉치가 잠깐 존다', async ({ page }) => {
+  await open(page, { frozen: true });
+  const p = await page.evaluate(() => (window.__moongchi as Api).hotspotPoint('desk'));
+  await page.mouse.click(p!.x, p!.y);
+  await expect(page.getByTestId('detail-sheet')).toHaveClass(/open/);
+  expect(await api(page).activity()).toBe('sleep');
 });

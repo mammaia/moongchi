@@ -222,3 +222,26 @@ export function petted(brain: BrainState, now: number): BrainState {
 export function force(brain: BrainState, activity: AutoActivity, now: number, rng: Rng, from: Point, area: Area): BrainState {
   return start(finishCurrent(brain, now), activity, now, rng, from, area);
 }
+
+/**
+ * 낮잠. 평소에는 스스로 잠들지 않고(잠 비중 0), 앱을 나갔다 들어왔을 때나
+ * 다이어리·조리를 하는 동안에만 이렇게 잠깐 잔다. 쓰다듬으면 바로 깬다.
+ */
+export function nap(brain: BrainState, now: number, rng: Rng): BrainState {
+  if (brain.activity === 'sleep') return brain;
+  return {
+    ...finishCurrent(brain, now),
+    activity: 'sleep',
+    since: now,
+    until: now + between(rng, C.nap.durationMs),
+    target: null,
+    prop: null,
+    settling: false,
+  };
+}
+
+/** 하던 행동을 그만두고 잠깐 멈춘다 (예: 앱에 돌아왔을 때 놀던 장난감이 치워졌다). */
+export function calmDown(brain: BrainState, now: number, rng: Rng): BrainState {
+  if (brain.activity === 'idle' || brain.activity === 'sleep') return brain;
+  return settle(finishCurrent(brain, now), now, C.settleMs, rng);
+}
