@@ -22,6 +22,19 @@ async function open(page: Page, { frozen }: { frozen: boolean }, query = '') {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`/${query}`);
   await page.waitForFunction(() => (window.__moongchi as Api | undefined)?.ready());
+  // 느린 CI에서는 게임이 켜진 뒤에도 화면 크기 맞추기가 조금 늦게 끝난다.
+  // 캔버스 위치가 두 번 연속 같을 때까지 기다려야 뭉치를 정확히 누를 수 있다.
+  await page.waitForFunction(
+    () => {
+      const r = document.querySelector('canvas')!.getBoundingClientRect();
+      const w = window as unknown as { __rect?: string };
+      const prev = w.__rect;
+      w.__rect = `${r.x},${r.y},${r.width},${r.height}`;
+      return prev === w.__rect;
+    },
+    undefined,
+    { polling: 150 },
+  );
   if (frozen) await page.evaluate(() => (window.__moongchi as Api).freezeMungchi(true));
   return errors;
 }
