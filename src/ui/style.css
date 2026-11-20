@@ -226,7 +226,54 @@ html, body {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   display: flex;
 }
-.photo-frame img { display: block; max-width: 100%; max-height: calc(100dvh - 220px); object-fit: contain; border-radius: 2px; }
+.photo-frame img { display: block; max-width: 100%; max-height: calc(100dvh - 260px); object-fit: contain; border-radius: 2px; }
+.photo-hint { margin: 0; color: rgba(255, 250, 243, 0.75); font-size: 12px; }
+.photo-info { display: flex; align-items: center; gap: 10px; }
+.chip {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 250, 243, 0.2);
+  color: #fffaf3;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.chip[hidden] { display: none; }
+
+/* 자르기 틀: 틀 밖은 어둡게, 네 모서리에 손잡이 */
+.crop-stage { position: relative; overflow: hidden; touch-action: none; border-radius: 2px; }
+.crop-stage img { pointer-events: none; -webkit-user-drag: none; }
+.crop-box {
+  position: absolute;
+  box-shadow: 0 0 0 9999px rgba(30, 22, 16, 0.5);
+  outline: 2px solid #fffaf3;
+  outline-offset: -2px;
+  cursor: move;
+  touch-action: none;
+}
+.crop-box.dragging { outline-color: var(--accent); }
+.crop-handle {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  touch-action: none;
+}
+.crop-handle::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 4px solid #fffaf3;
+}
+.crop-handle.nw { left: 0; top: 0; cursor: nwse-resize; }
+.crop-handle.ne { right: 0; top: 0; cursor: nesw-resize; }
+.crop-handle.sw { left: 0; bottom: 0; cursor: nesw-resize; }
+.crop-handle.se { right: 0; bottom: 0; cursor: nwse-resize; }
+.crop-handle.nw::after { left: 2px; top: 2px; border-right: 0; border-bottom: 0; }
+.crop-handle.ne::after { right: 2px; top: 2px; border-left: 0; border-bottom: 0; }
+.crop-handle.sw::after { left: 2px; bottom: 2px; border-right: 0; border-top: 0; }
+.crop-handle.se::after { right: 2px; bottom: 2px; border-left: 0; border-top: 0; }
 .photo-date { margin: 0; color: #fffaf3; font-size: 14px; font-weight: 600; }
 .photo-actions { display: flex; gap: 10px; width: 100%; max-width: 420px; }
 .photo-actions .btn { flex: 1; }
@@ -262,5 +309,5 @@ html, body {
   overflow: hidden;
   background: var(--line);
 }
-.album-cell img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.album-cell img { display: block; width: 100%; height: 100%; object-fit: contain; } /* 잘라 찍은 사진도 잘리지 않게 */
 .photo-toast { z-index: 3; top: auto; bottom: calc(env(safe-area-inset-bottom) + 110px); }
