@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PHOTO_HIDDEN_KEY } from '../../core/photoLibrary';
 import { HOTSPOTS, type HotspotId } from '../../data/room';
 import { BACK_WALL, WORLD, ceilY, floorY, leftEdge, point, type Pt } from './perspective';
 
@@ -136,7 +137,8 @@ export class RoomView {
           resolution: 3,
         })
         .setOrigin(0.5)
-        .setDepth(2);
+        .setDepth(2)
+        .setData(PHOTO_HIDDEN_KEY, true); // 이름표는 UI라서 사진에는 안 나온다
       // 화면 가장자리에서 이름표가 잘리지 않게 안쪽으로 당긴다.
       const half = label.width / 2 + 4;
       label.x = Phaser.Math.Clamp(label.x, half, WORLD.width - half);
