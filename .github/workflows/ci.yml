@@ -1,0 +1,25 @@
+name: 테스트
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: 타입 검사와 빌드
+        run: npm run build
+      - name: 규칙 테스트
+        run: npm test
+      - name: 화면 테스트 준비
+        run: npx playwright install --with-deps chromium
+      - name: 화면 테스트
+        run: npm run e2e
