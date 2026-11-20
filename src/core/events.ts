@@ -12,6 +12,13 @@ export type GameEvents = {
   'hotspot:opened': { id: string };
   'hotspot:closed': { id: string };
   /**
+   * 물건이 연 기능 화면(예: 책상 → 다이어리)을 다 써서 방으로 돌아가고 싶다.
+   * 방 화면이 듣고 확대를 풀며 'hotspot:closed'를 알린다.
+   */
+  'hotspot:done': { id: string };
+  /** 다이어리 페이지 기록이 바뀌었다 (사진 붙이기/떼기, 글 쓰기). */
+  'diary:changed': { dayKey: string };
+  /**
    * 뭉치의 행동이 바뀌었다. 기억, 사진, 친밀도 같은 이후 기능이 듣고 쓸 수 있다.
    * settling = 행동 사이에 잠깐 멈춰 있는 중.
    */

@@ -19,6 +19,11 @@ export interface Hotspot {
   body: string;
   /** 연결될 기능과 단계. 없으면 GDD에 기능이 정해지지 않은 물건. */
   feature?: { name: string; stage: number };
+  /**
+   * 누르면 설명 시트 대신 기능 화면을 연다. 그 기능이 'hotspot:opened'를 듣고 자기 화면을 열고,
+   * 다 쓰면 'hotspot:done'을 알린다.
+   */
+  screen?: 'diary';
 }
 
 export const HOTSPOTS: Record<HotspotId, Hotspot> = {
@@ -48,6 +53,7 @@ export const HOTSPOTS: Record<HotspotId, Hotspot> = {
     title: '컴퓨터 책상',
     body: '침대 쪽을 향한 모니터와 노트, 필기구. 여기서 다이어리 바인더를 열고 다꾸를 할 예정이에요.',
     feature: { name: '다이어리', stage: 8 },
+    screen: 'diary',
   },
   counter: {
     id: 'counter',
