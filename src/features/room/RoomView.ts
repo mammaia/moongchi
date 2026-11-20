@@ -334,28 +334,44 @@ export class RoomView {
   }
 
   private drawFridge(): void {
-    // [확정] 신발장 대신 1인 가구용 작은 냉장고. 문이 현관(보는 사람) 쪽을 향해 정면으로 보인다.
-    const H = 0.3;
-    const u0 = 0.79, u1 = 0.97, t0 = 0.74, t1 = 0.84;
-    const pts = this.box(u0, u1, t0, t1, H, { top: COLOR.fridgeSide, front: COLOR.fridge, side: COLOR.fridgeSide }, 'left', 0.015);
+    // [확정] 신발장 대신 1인 가구용 작은 냉장고. 문은 화장실(왼쪽 벽) 쪽을 향한다.
+    // 벽에 딱 붙여 왼쪽을 보게 하면 현관에서는 문이 거의 안 보이므로,
+    // 구석에 비스듬히 놓아 문이 화장실 쪽을 보면서도 앞에서 보이게 한다.
+    const H = 0.3, base = 0.015;
+    type UT = { u: number; t: number };
+    const A: UT = { u: 0.8, t: 0.66 }; // 문 면의 안쪽 끝
+    const B: UT = { u: 0.92, t: 0.88 }; // 문 면의 현관 쪽 끝
+    const A2: UT = { u: 0.88, t: 0.62 }; // 뒤쪽 (벽 쪽)
+    const B2: UT = { u: 1.0, t: 0.84 };
+    const at = (p: UT, h: number) => point(p.u, p.t, h);
+    const mix = (k: number): UT => ({ u: A.u + (B.u - A.u) * k, t: A.t + (B.t - A.t) * k });
+    const doorQuad = (k0: number, k1: number, h0: number, h1: number) =>
+      [at(mix(k0), h0), at(mix(k1), h0), at(mix(k1), h1), at(mix(k0), h1)];
+
+    const side = [at(B, base), at(B2, base), at(B2, H), at(B, H)];
+    const door = [at(A, base), at(B, base), at(B, H), at(A, H)];
+    const top = [at(A, H), at(B, H), at(B2, H), at(A2, H)];
+    this.poly(side, COLOR.fridgeSide);
+    this.poly(door, COLOR.fridge);
+    this.poly(top, COLOR.fridgeSide);
     // 받침(바닥과 닿는 어두운 띠)
-    this.poly([point(u0 + 0.01, t1, 0), point(u1 - 0.01, t1, 0), point(u1 - 0.01, t1, 0.015), point(u0 + 0.01, t1, 0.015)], COLOR.steelDark, 1, false);
-    // 위 냉동칸 / 아래 냉장칸 나누는 선
+    this.poly(doorQuad(0.02, 0.98, 0, base), COLOR.steelDark, 1, false);
+    // 위 냉동칸 / 아래 냉장칸
     const split = 0.21;
-    const sa = point(u0, t1, split);
-    const sb = point(u1, t1, split);
+    const sa = at(mix(0.02), split);
+    const sb = at(mix(0.98), split);
     this.g.lineStyle(1.5, COLOR.line, 0.9).lineBetween(sa.x, sa.y, sb.x, sb.y);
-    // 문 손잡이: 오른쪽 가장자리 근처의 세로 막대
+    // 손잡이: 문의 현관 쪽 가장자리 근처 세로 막대
     for (const [h0, h1] of [[0.225, 0.275], [0.13, 0.19]] as const) {
-      const p0 = point(u1 - 0.025, t1, h0);
-      const p1 = point(u1 - 0.025, t1, h1);
+      const p0 = at(mix(0.88), h0);
+      const p1 = at(mix(0.88), h1);
       this.g.lineStyle(3, COLOR.steelDark, 1).lineBetween(p0.x, p0.y, p1.x, p1.y);
     }
     // 냉장고 문에 붙은 작은 메모 자석
-    const memo = point(u0 + 0.05, t1, 0.17);
-    this.g.fillStyle(0xfbe7a1, 1).fillRect(memo.x - 6, memo.y - 8, 12, 12);
-    this.g.fillStyle(0xf28aa5, 1).fillCircle(memo.x, memo.y - 8, 2.2);
-    this.register('fridge', pts);
+    const memo = at(mix(0.25), 0.16);
+    this.g.fillStyle(0xfbe7a1, 1).fillRect(memo.x - 5, memo.y - 8, 10, 11);
+    this.g.fillStyle(0xf28aa5, 1).fillCircle(memo.x, memo.y - 8, 2);
+    this.register('fridge', [...side, ...door, ...top]);
   }
 
   private drawEntrance(): void {
