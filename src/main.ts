@@ -46,8 +46,15 @@ const saveNow = () => {
   store.update((d) => void (d.progress.lastSeenAt = clock.now()));
   store.flush();
 };
+let hiddenAt: number | null = null;
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') saveNow();
+  if (document.visibilityState === 'hidden') {
+    hiddenAt = clock.now();
+    saveNow();
+  } else if (hiddenAt !== null) {
+    bus.emit('app:resumed', { awayMs: clock.now() - hiddenAt });
+    hiddenAt = null;
+  }
 });
 window.addEventListener('pagehide', saveNow);
 
@@ -67,5 +74,8 @@ window.__moongchi = {
   freezeMungchi: (value = true) => scene.mungchi.setFrozen(value),
   activity: () => scene.mungchi.activity,
   settling: () => scene.mungchi.settling,
+  toys: () => scene.mungchi.toysInRoom,
+  resume: (awayMs: number) => bus.emit('app:resumed', { awayMs }),
+  openHotspotEvent: (id: string) => bus.emit('hotspot:opened', { id }),
   forceActivity: (a: Parameters<RoomScene['mungchi']['forceActivity']>[0]) => scene.mungchi.forceActivity(a),
 };

@@ -16,6 +16,8 @@ export type GameEvents = {
    * settling = 행동 사이에 잠깐 멈춰 있는 중.
    */
   'mungchi:activity': { activity: MungchiActivity; previous: MungchiActivity; settling: boolean; at: number };
+  /** 앱을 뒤로 보냈다가(다른 앱, 화면 끔) 다시 돌아왔다. awayMs = 밖에 있던 시간 */
+  'app:resumed': { awayMs: number };
   /** 개발자 패널: 뭉치에게 이 행동을 바로 시키기 */
   'dev:force-activity': { activity: MungchiAutoActivity };
 };
