@@ -71,4 +71,15 @@ describe('강아지처럼 놀기', () => {
     expect(playFrame(toss, 0.7).toyLift).toBeGreaterThan(20);
     expect(playFrame(toss, 1).toyLift).toBeCloseTo(0);
   });
+
+  it('놀 때 표정이 바뀐다 (물 때 앙, 덮칠 때 오!, 신나면 헤헤)', () => {
+    const moves = simulate(200);
+    const faces = new Set<string>();
+    for (const m of moves) for (let t = 0; t <= 1; t += 0.05) faces.add(playFrame(m, t).face);
+    expect([...faces].sort()).toEqual(['bite', 'grin', 'joy', 'normal', 'open']);
+    const shake = moves.find((m) => m.kind === 'shake')!;
+    expect(playFrame(shake, 0.5).face).toBe('bite');
+    const pounce = moves.find((m) => m.kind === 'pounce')!;
+    expect(playFrame(pounce, 0.5).face).toBe('open');
+  });
 });

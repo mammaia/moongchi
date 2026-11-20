@@ -213,6 +213,7 @@ export class MungchiController {
     run.frame = frame;
     this.view.setPosition(frame.mungchi.x, frame.mungchi.y);
     this.view.setPose(frame.pose, run.move.facing);
+    this.view.setFace(frame.face);
     run.toy.place(frame.toy, frame.toyLift, frame.toySpin);
     if (t >= 1) {
       run.toy.settle(frame.toySpin);
