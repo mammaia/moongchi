@@ -60,7 +60,7 @@ export const HOTSPOTS: Record<HotspotId, Hotspot> = {
     id: 'fridge',
     label: '냉장고',
     title: '냉장고',
-    body: '현관 옆 1인 가구용 작은 냉장고. 눌렀을 때의 기능은 아직 정해지지 않았어요.',
+    body: '현관 옆 1인 가구용 작은 냉장고. 문은 화장실 쪽을 향해요. 눌렀을 때의 기능은 아직 정해지지 않았어요.',
   },
   entrance: {
     id: 'entrance',
