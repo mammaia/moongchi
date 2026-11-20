@@ -3,12 +3,15 @@ import { scaleAtY } from '../room/perspective';
 import { BALANCE } from '../../data/balance';
 import type { Activity } from './brain';
 import type { GaitPose } from './gait';
+import type { Face } from './playMotion';
 
 const R = 44; // 기본 반지름
 const FUR = 0xffffff;
 const FUR_SHADE = 0xeeeae6;
 const INK = 0x3b3131;
 const BLUSH = 0xf7b8c4;
+const MOUTH = 0x8a4a4f;
+const TONGUE = 0xf58fa3;
 
 const TEXT_STYLE = {
   fontFamily: 'system-ui, sans-serif',
@@ -35,6 +38,8 @@ export class MungchiView {
   private look = 0;
   private lookTarget = 0;
   private lookTimer?: Phaser.Time.TimerEvent;
+  /** 지금 표정 (놀 때 바뀐다) */
+  private faceKind: Face = 'normal';
   private current: Activity = 'idle';
 
   constructor(private readonly scene: Phaser.Scene, x: number, y: number) {
@@ -77,6 +82,7 @@ export class MungchiView {
     this.lookTimer?.remove();
     this.lookTimer = undefined;
     const wasWalking = this.current === 'wander' || this.current === 'play';
+    this.faceKind = 'normal';
     this.current = activity;
     this.setSleeping(activity === 'sleep');
     if (wasWalking) this.land();
@@ -111,6 +117,13 @@ export class MungchiView {
     this.gait.setScale(pose.scaleX, pose.scaleY);
     // 높이 뜰수록 그림자가 살짝 작아진다.
     this.shadow.setScale(1 - pose.hop * 0.02);
+  }
+
+  /** 표정을 바꾼다. 같은 표정이면 다시 그리지 않는다. */
+  setFace(face: Face): void {
+    if (this.faceKind === face) return;
+    this.faceKind = face;
+    this.drawFace();
   }
 
   /** 매 프레임: 눈동자를 보려는 쪽으로 부드럽게 옮긴다. */
@@ -227,9 +240,20 @@ export class MungchiView {
     g.fillStyle(BLUSH, 0.75);
     g.fillEllipse(-22, 10, 12, 7).fillEllipse(22, 10, 12, 7);
     g.lineStyle(2.2, INK, 1);
-    if (this.sleeping || this.blinking || happy) {
+    const face = this.sleeping ? 'normal' : this.faceKind;
+    if (!this.sleeping && face === 'bite') {
+      // 앙 물고 눈 질끈 (> <)
+      for (const ex of [-13, 13]) {
+        const d = ex < 0 ? 1 : -1;
+        g.beginPath();
+        g.moveTo(ex - d * 4, eyeY - 4);
+        g.lineTo(ex + d * 2, eyeY);
+        g.lineTo(ex - d * 4, eyeY + 4);
+        g.strokePath();
+      }
+    } else if (this.sleeping || this.blinking || happy || face === 'joy') {
       // 감은 눈 (자는 중: ‿ / 기쁨: ^)
-      const curve = this.sleeping || this.blinking ? 1 : -1;
+      const curve = this.sleeping || (this.blinking && face !== 'joy') ? 1 : -1;
       for (const ex of [-13, 13]) {
         g.beginPath();
         g.arc(ex, eyeY + (curve > 0 ? -2 : 3), 5, curve > 0 ? 0.15 * Math.PI : 1.15 * Math.PI, curve > 0 ? 0.85 * Math.PI : 1.85 * Math.PI);
@@ -237,12 +261,36 @@ export class MungchiView {
       }
     } else {
       const lx = this.look * 3;
+      const big = face === 'open' ? 1.25 : 1; // 놀라서 눈이 동그래짐
       g.fillStyle(INK, 1);
-      g.fillEllipse(-13 + lx, eyeY, 6, 8).fillEllipse(13 + lx, eyeY, 6, 8);
+      g.fillEllipse(-13 + lx, eyeY, 6 * big, 8 * big).fillEllipse(13 + lx, eyeY, 6 * big, 8 * big);
       g.fillStyle(0xffffff, 1);
       g.fillCircle(-12 + lx, eyeY - 2, 1.4).fillCircle(14 + lx, eyeY - 2, 1.4);
     }
-    // 작은 입
+    this.drawMouth(g, happy && face === 'normal' ? 'normal' : face);
+  }
+
+  /** 입 모양. [임시 그림] */
+  private drawMouth(g: Phaser.GameObjects.Graphics, face: Face): void {
+    if (face === 'grin' || face === 'joy') {
+      // 입 벌리고 헤헤: 아래로 둥근 입 + 혀
+      g.fillStyle(MOUTH, 1);
+      g.slice(0, 6, 6, 0, Math.PI, false).fillPath();
+      g.fillStyle(TONGUE, 1).fillEllipse(0, 9.5, 6, 4);
+      return;
+    }
+    if (face === 'open') {
+      // 동그랗게 '오!'
+      g.fillStyle(MOUTH, 1).fillEllipse(0, 9, 6, 7);
+      return;
+    }
+    if (face === 'bite') {
+      // 앙 문 입: 크게 벌림
+      g.fillStyle(MOUTH, 1).fillEllipse(0, 9, 13, 9);
+      g.fillStyle(TONGUE, 1).fillEllipse(0, 11.5, 7, 3.5);
+      return;
+    }
+    // 평소: 작은 ω 입
     g.lineStyle(1.8, INK, 1);
     g.beginPath();
     g.arc(-2.5, 7, 2.5, 0, Math.PI);

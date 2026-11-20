@@ -105,6 +105,13 @@ export function planPlayMove(rng: Rng, m: Point, toy: Point, area: Area, prop: P
 /** 장난감을 물었을 때의 위치 (뭉치 입 앞) */
 export const mouthOf = (m: Point, facing: 1 | -1): Point => ({ x: m.x + facing * P.reachPx * 0.75, y: m.y + 10 });
 
+/**
+ * 놀 때 표정. [임시 그림]
+ * normal = 평소(ω 입), grin = 입 벌리고 헤헤(혀), open = 동그랗게 '오!',
+ * bite = 장난감을 앙 물고 눈 질끈, joy = 눈웃음 + 입 벌리고 헤헤
+ */
+export type Face = 'normal' | 'grin' | 'open' | 'bite' | 'joy';
+
 export interface PlayFrame {
   mungchi: Point;
   toy: Point;
@@ -113,6 +120,7 @@ export interface PlayFrame {
   /** 장난감 회전 (도, 이 동작 동안 더해지는 양) */
   toySpin: number;
   pose: GaitPose;
+  face: Face;
 }
 
 const easeOut = (t: number) => 1 - (1 - t) * (1 - t);
@@ -131,34 +139,34 @@ export function playFrame(move: PlayMove, t: number): PlayFrame {
       const k = easeInOut(t);
       const steps = Math.max(2, Math.round(move.durationMs / 140));
       const air = Math.abs(Math.sin(t * steps * Math.PI));
-      return { mungchi: at(move.from, move.to, k), toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(air * 5, Math.sin(t * steps * Math.PI) * 4, 1, 1 + air * 0.04) };
+      return { mungchi: at(move.from, move.to, k), toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(air * 5, Math.sin(t * steps * Math.PI) * 4, 1, 1 + air * 0.04), face: 'grin' };
     }
     case 'bow': {
       // 앞으로 납작 엎드리고 엉덩이(몸 전체)를 좌우로 흔든다
       const down = Math.sin(Math.min(1, t / 0.25) * Math.PI / 2) * (t > 0.8 ? (1 - t) / 0.2 : 1);
       const wiggle = Math.sin(t * Math.PI * 8) * 5 * down;
-      return { mungchi: move.from, toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(0, f * 10 * down + wiggle, 1 + 0.1 * down, 1 - 0.14 * down) };
+      return { mungchi: move.from, toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(0, f * 10 * down + wiggle, 1 + 0.1 * down, 1 - 0.14 * down), face: down > 0.5 ? 'grin' : 'normal' };
     }
     case 'pounce': {
       // 웅크렸다(0~0.25) 폴짝(0.25~0.75) 착지(0.75~1). 착지할 때 장난감이 튕겨 나간다.
       if (t < 0.25) {
         const c = t / 0.25;
-        return { mungchi: move.from, toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(0, f * 4 * c, 1 + 0.08 * c, 1 - 0.12 * c) };
+        return { mungchi: move.from, toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(0, f * 4 * c, 1 + 0.08 * c, 1 - 0.12 * c), face: 'normal' };
       }
       if (t < 0.75) {
         const j = (t - 0.25) / 0.5;
-        return { mungchi: at(move.from, move.to, j), toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(Math.sin(j * Math.PI) * 16, f * 8, 0.94, 1.08) };
+        return { mungchi: at(move.from, move.to, j), toy: move.toyFrom, toyLift: 0, toySpin: 0, pose: pose(Math.sin(j * Math.PI) * 16, f * 8, 0.94, 1.08), face: 'open' };
       }
       const l = (t - 0.75) / 0.25;
       const k = easeOut(l);
-      return { mungchi: move.to, toy: at(move.toyFrom, move.toyTo, k), toyLift: Math.sin(l * Math.PI) * 6, toySpin: 220 * k * f, pose: pose(0, f * 3 * (1 - l), 1 + 0.1 * (1 - l), 1 - 0.12 * (1 - l)) };
+      return { mungchi: move.to, toy: at(move.toyFrom, move.toyTo, k), toyLift: Math.sin(l * Math.PI) * 6, toySpin: 220 * k * f, pose: pose(0, f * 3 * (1 - l), 1 + 0.1 * (1 - l), 1 - 0.12 * (1 - l)), face: 'joy' };
     }
     case 'toss': {
       // 물고(0~0.3) 고개를 휙(0.3~0.4) 하면 장난감이 포물선으로 날아간다(0.35~1). 뭉치는 신나서 폴짝.
       const mouth = mouthOf(move.from, f);
       if (t < 0.3) {
         const k = easeOut(t / 0.3);
-        return { mungchi: move.from, toy: at(move.toyFrom, mouth, k), toyLift: 10 * k, toySpin: 0, pose: pose(0, f * 6 * k, 1.04, 0.96) };
+        return { mungchi: move.from, toy: at(move.toyFrom, mouth, k), toyLift: 10 * k, toySpin: 0, pose: pose(0, f * 6 * k, 1.04, 0.96), face: 'bite' };
       }
       const fly = clamp((t - 0.35) / 0.65, 0, 1);
       const flick = t < 0.45 ? Math.sin(((t - 0.3) / 0.15) * Math.PI) : 0;
@@ -169,6 +177,7 @@ export function playFrame(move: PlayMove, t: number): PlayFrame {
         toyLift: 10 * (1 - fly) + Math.sin(fly * Math.PI) * 42,
         toySpin: 400 * fly * f,
         pose: pose(hop, -f * 14 * flick, 1, 1 + 0.05 * flick),
+        face: t < 0.4 ? 'bite' : t < 0.65 ? 'open' : 'grin',
       };
     }
     case 'shake': {
@@ -176,15 +185,15 @@ export function playFrame(move: PlayMove, t: number): PlayFrame {
       const mouth = mouthOf(move.from, f);
       if (t < 0.15) {
         const k = easeOut(t / 0.15);
-        return { mungchi: move.from, toy: at(move.toyFrom, mouth, k), toyLift: 8 * k, toySpin: 0, pose: pose(0, f * 5 * k, 1, 1) };
+        return { mungchi: move.from, toy: at(move.toyFrom, mouth, k), toyLift: 8 * k, toySpin: 0, pose: pose(0, f * 5 * k, 1, 1), face: 'bite' };
       }
       if (t < 0.85) {
         const s = (t - 0.15) / 0.7;
         const shake = Math.sin(s * Math.PI * 10) * 13 * (1 - s * 0.4);
-        return { mungchi: move.from, toy: { x: mouth.x + Math.sin(s * Math.PI * 10) * 7, y: mouth.y }, toyLift: 8, toySpin: shake * 2, pose: pose(Math.abs(shake) * 0.15, shake, 1, 1) };
+        return { mungchi: move.from, toy: { x: mouth.x + Math.sin(s * Math.PI * 10) * 7, y: mouth.y }, toyLift: 8, toySpin: shake * 2, pose: pose(Math.abs(shake) * 0.15, shake, 1, 1), face: 'bite' };
       }
       const d = (t - 0.85) / 0.15;
-      return { mungchi: move.from, toy: at(mouth, move.toyTo, d), toyLift: 8 * (1 - d), toySpin: 0, pose: pose(0, 0, 1, 1) };
+      return { mungchi: move.from, toy: at(mouth, move.toyTo, d), toyLift: 8 * (1 - d), toySpin: 0, pose: pose(0, 0, 1, 1), face: 'joy' };
     }
   }
 }
