@@ -255,21 +255,28 @@ export class RoomView {
     this.poly(bezel, COLOR.monitor);
     this.poly(quad(0.06, 0.94, H + 0.062, H + 0.178), COLOR.screen, 1, false);
     // 모니터 아래 책상 위: 펼친 노트, 펜, 머그컵
-    const note = [point(0.71, 0.05, H), point(0.84, 0.05, H), point(0.84, 0.13, H), point(0.71, 0.13, H)];
+    // 의자(책상 왼쪽)에 앉아 오른쪽을 보며 쓰는 방향으로 펼친 노트.
+    // 앉은 사람 기준 왼쪽 페이지가 안쪽(t 작음), 오른쪽 페이지가 앞쪽이고, 줄은 앞뒤 방향으로 그어진다.
+    const nu0 = 0.69, nu1 = 0.8, nt0 = 0.03, nt1 = 0.14, ntMid = (nt0 + nt1) / 2;
+    const note = [point(nu0, nt0, H), point(nu1, nt0, H), point(nu1, nt1, H), point(nu0, nt1, H)];
     this.poly(note, COLOR.paper);
-    const spine = [point(0.775, 0.05, H), point(0.775, 0.13, H)];
-    this.g.lineStyle(1, COLOR.line, 0.8).lineBetween(spine[0].x, spine[0].y, spine[1].x, spine[1].y);
+    const spineA = point(nu0, ntMid, H);
+    const spineB = point(nu1, ntMid, H);
+    this.g.lineStyle(1, COLOR.line, 0.8).lineBetween(spineA.x, spineA.y, spineB.x, spineB.y);
     this.g.lineStyle(1, COLOR.screen, 0.9);
-    for (const tt of [0.07, 0.09, 0.11]) {
-      const a = point(0.72, tt, H);
-      const b = point(0.765, tt, H);
-      this.g.lineBetween(a.x, a.y, b.x, b.y);
+    for (const u of [0.715, 0.74, 0.765]) {
+      for (const [ta, tb] of [[nt0 + 0.012, ntMid - 0.01], [ntMid + 0.01, nt1 - 0.012]] as const) {
+        const a = point(u, ta, H);
+        const b = point(u, tb, H);
+        this.g.lineBetween(a.x, a.y, b.x, b.y);
+      }
     }
-    const penA = point(0.79, 0.07, H);
-    const penB = point(0.83, 0.115, H);
+    // 오른손 쪽(앞쪽 페이지 옆)에 펜, 노트 위쪽에 연필
+    const penA = point(0.72, nt1 + 0.012, H);
+    const penB = point(0.79, nt1 + 0.018, H);
     this.g.lineStyle(2, COLOR.pen, 1).lineBetween(penA.x, penA.y, penB.x, penB.y);
-    const pencilA = point(0.85, 0.06, H);
-    const pencilB = point(0.88, 0.1, H);
+    const pencilA = point(0.83, 0.04, H);
+    const pencilB = point(0.83, 0.1, H);
     this.g.lineStyle(2, 0xf2c14e, 1).lineBetween(pencilA.x, pencilA.y, pencilB.x, pencilB.y);
     const mug = point(0.88, 0.13, H);
     this.g.fillStyle(COLOR.mug, 1).fillRoundedRect(mug.x - 5, mug.y - 11, 10, 11, 2);
@@ -283,7 +290,7 @@ export class RoomView {
       this.g.lineBetween(a.x, a.y, b.x, b.y);
     }
     const seat = this.box(0.58, 0.65, 0.04, 0.12, 0.1, { top: COLOR.chair, front: 0xd99a74, side: 0xd99a74 }, 'left', 0.085);
-    const back = this.box(0.575, 0.59, 0.045, 0.115, 0.27, { top: COLOR.chair, front: 0xd99a74, side: COLOR.chair }, 'left', 0.1);
+    const back = this.box(0.575, 0.59, 0.045, 0.115, 0.2, { top: COLOR.chair, front: 0xd99a74, side: COLOR.chair }, 'left', 0.1);
     this.register('desk', [...desk, ...bezel, ...seat, ...back]);
   }
 
@@ -327,19 +334,27 @@ export class RoomView {
   }
 
   private drawFridge(): void {
-    // [확정] 신발장 대신 1인 가구용 작은 냉장고. 문은 방 안쪽(왼쪽)을 향한다.
-    const H = 0.27;
-    const pts = this.box(0.86, 1.0, 0.76, 0.86, H, { top: COLOR.fridgeSide, front: COLOR.fridgeSide, side: COLOR.fridge }, 'left');
-    const split = 0.19;
-    const a = point(0.86, 0.76, split);
-    const b = point(0.86, 0.86, split);
-    this.g.lineStyle(1.5, COLOR.line, 0.8).lineBetween(a.x, a.y, b.x, b.y);
-    // 손잡이 (위 칸, 아래 칸)
-    for (const [h0, h1] of [[0.205, 0.25], [0.11, 0.165]] as const) {
-      const p0 = point(0.86, 0.84, h0);
-      const p1 = point(0.86, 0.84, h1);
-      this.g.lineStyle(3, COLOR.steelDark, 1).lineBetween(p0.x - 1, p0.y, p1.x - 1, p1.y);
+    // [확정] 신발장 대신 1인 가구용 작은 냉장고. 문이 현관(보는 사람) 쪽을 향해 정면으로 보인다.
+    const H = 0.3;
+    const u0 = 0.79, u1 = 0.97, t0 = 0.74, t1 = 0.84;
+    const pts = this.box(u0, u1, t0, t1, H, { top: COLOR.fridgeSide, front: COLOR.fridge, side: COLOR.fridgeSide }, 'left', 0.015);
+    // 받침(바닥과 닿는 어두운 띠)
+    this.poly([point(u0 + 0.01, t1, 0), point(u1 - 0.01, t1, 0), point(u1 - 0.01, t1, 0.015), point(u0 + 0.01, t1, 0.015)], COLOR.steelDark, 1, false);
+    // 위 냉동칸 / 아래 냉장칸 나누는 선
+    const split = 0.21;
+    const sa = point(u0, t1, split);
+    const sb = point(u1, t1, split);
+    this.g.lineStyle(1.5, COLOR.line, 0.9).lineBetween(sa.x, sa.y, sb.x, sb.y);
+    // 문 손잡이: 오른쪽 가장자리 근처의 세로 막대
+    for (const [h0, h1] of [[0.225, 0.275], [0.13, 0.19]] as const) {
+      const p0 = point(u1 - 0.025, t1, h0);
+      const p1 = point(u1 - 0.025, t1, h1);
+      this.g.lineStyle(3, COLOR.steelDark, 1).lineBetween(p0.x, p0.y, p1.x, p1.y);
     }
+    // 냉장고 문에 붙은 작은 메모 자석
+    const memo = point(u0 + 0.05, t1, 0.17);
+    this.g.fillStyle(0xfbe7a1, 1).fillRect(memo.x - 6, memo.y - 8, 12, 12);
+    this.g.fillStyle(0xf28aa5, 1).fillCircle(memo.x, memo.y - 8, 2.2);
     this.register('fridge', pts);
   }
 
