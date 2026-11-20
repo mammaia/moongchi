@@ -157,7 +157,7 @@ test('책상(다이어리)을 열면 뭉치가 잠깐 존다', async ({ page }) 
   await open(page, { frozen: true });
   const p = await page.evaluate(() => (window.__moongchi as Api).hotspotPoint('desk'));
   await page.mouse.click(p!.x, p!.y);
-  await expect(page.getByTestId('detail-sheet')).toHaveClass(/open/);
+  await expect(page.getByTestId('diary')).toBeVisible();
   expect(await api(page).activity()).toBe('sleep');
 });
 
