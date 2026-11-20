@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { scaleAtY } from '../room/perspective';
+import { BALANCE } from '../../data/balance';
 import type { Activity, PlayProp } from './brain';
+import type { GaitPose } from './gait';
 
 const R = 44; // 기본 반지름
 const FUR = 0xffffff;
@@ -21,16 +23,18 @@ const TEXT_STYLE = {
 export class MungchiView {
   readonly container: Phaser.GameObjects.Container;
   private readonly body: Phaser.GameObjects.Container;
+  /** 걸을 때 뛰고 뒤뚱거리는 층. 숨 쉬기(body)와 따로 움직여 서로 부딪히지 않는다. */
+  private readonly gait: Phaser.GameObjects.Container;
   private readonly face: Phaser.GameObjects.Graphics;
   private readonly shadow: Phaser.GameObjects.Ellipse;
   private sleeping = false;
   private blinking = false;
   private squishing = false;
   private zzzTimer?: Phaser.Time.TimerEvent;
-  /** 눈동자가 보는 방향 (-1 왼쪽 ~ 1 오른쪽) */
+  /** 눈동자가 보는 방향 (-1 왼쪽 ~ 1 오른쪽). 눈은 lookTarget 쪽으로 부드럽게 옮겨 간다. */
   private look = 0;
+  private lookTarget = 0;
   private lookTimer?: Phaser.Time.TimerEvent;
-  private walkPhase = 0;
   /** 혼자 놀기 중에 쓰는 임시 소품과 움직임 */
   private prop?: Phaser.GameObjects.Graphics;
   private playTweens: Phaser.Tweens.Tween[] = [];
@@ -42,7 +46,8 @@ export class MungchiView {
     this.drawFur(fur);
     this.face = scene.add.graphics();
     this.body = scene.add.container(0, 0, [fur, this.face]);
-    this.container = scene.add.container(x, y, [this.shadow, this.body]).setDepth(10).setName('mungchi');
+    this.gait = scene.add.container(0, 0, [this.body]);
+    this.container = scene.add.container(x, y, [this.shadow, this.gait]).setDepth(10).setName('mungchi');
     this.container.setSize(R * 2.6, R * 2.6);
     this.container.setInteractive(new Phaser.Geom.Circle(R * 1.3, R * 1.3, R * 1.3), Phaser.Geom.Circle.Contains);
     this.drawFace();
@@ -75,20 +80,27 @@ export class MungchiView {
     this.stopPlay();
     this.lookTimer?.remove();
     this.lookTimer = undefined;
-    this.body.y = 0;
-    this.walkPhase = 0;
+    const wasWalking = this.current === 'wander';
     this.current = activity;
     this.setSleeping(activity === 'sleep');
+    if (wasWalking) this.land();
     if (activity === 'idle') {
-      // 가만히 있기: 가끔 두리번거린다.
+      // 가만히 있기: 가끔 한쪽을 잠깐 바라봤다가 다시 앞을 본다.
+      const G = BALANCE.character.glance;
       this.setLook(0);
       this.lookTimer = this.scene.time.addEvent({
-        delay: 1800,
+        delay: G.everyMs,
         loop: true,
         callback: () => {
-          if (Math.random() < 0.5) this.setLook([-1, 0, 1][Math.floor(Math.random() * 3)]);
+          if (this.lookTarget !== 0 || Math.random() >= G.chance) return;
+          this.setLook(Math.random() < 0.5 ? -1 : 1);
+          this.scene.time.delayedCall(Phaser.Math.Between(G.holdMs[0], G.holdMs[1]), () => {
+            if (this.current === 'idle') this.setLook(0);
+          });
         },
       });
+    } else if (activity === 'wander') {
+      // 방향은 걷기 시작할 때 walkPose()가 정한다.
     } else if (activity === 'play' && prop) {
       this.startPlay(prop);
     } else {
@@ -96,18 +108,36 @@ export class MungchiView {
     }
   }
 
-  /** 짧게 이동하기: 가는 방향을 보며 통통 튄다. */
-  walkStep(deltaMs: number, dirX: number): void {
+  /** 짧게 이동하기: 가는 방향을 보고, 걸음걸이 계산(gait.ts) 결과대로 몸을 움직인다. */
+  walkPose(pose: GaitPose, dirX: number): void {
     if (this.current !== 'wander') return;
-    this.walkPhase += deltaMs / 140;
-    this.body.y = -Math.abs(Math.sin(this.walkPhase)) * 5;
-    this.setLook(dirX > 0.2 ? 1 : dirX < -0.2 ? -1 : 0);
+    this.setLook(dirX > 0.25 ? 1 : dirX < -0.25 ? -1 : 0);
+    this.gait.setPosition(0, -pose.hop);
+    this.gait.setAngle(pose.tilt);
+    this.gait.setScale(pose.scaleX, pose.scaleY);
+    // 높이 뜰수록 그림자가 살짝 작아진다.
+    this.shadow.setScale(1 - pose.hop * 0.02);
+  }
+
+  /** 매 프레임: 눈동자를 보려는 쪽으로 부드럽게 옮긴다. */
+  update(deltaMs: number): void {
+    if (this.look === this.lookTarget) return;
+    const step = deltaMs / 160;
+    const diff = this.lookTarget - this.look;
+    this.look = Math.abs(diff) <= step ? this.lookTarget : this.look + Math.sign(diff) * step;
+    this.drawFace();
   }
 
   private setLook(value: number): void {
-    if (this.look === value) return;
-    this.look = value;
-    this.drawFace();
+    this.lookTarget = value;
+  }
+
+  /** 걷기를 마치면 살짝 눌렸다 원래 모양으로 돌아온다. */
+  private land(): void {
+    this.gait.setPosition(0, 0).setAngle(0);
+    this.shadow.setScale(1);
+    this.gait.setScale(1.05, 0.94);
+    this.scene.tweens.add({ targets: this.gait, scaleX: 1, scaleY: 1, duration: 220, ease: 'Back.easeOut' });
   }
 
   /** [임시 그림] 혼자 놀기: 옆에 소품이 나타나고, 뭉치가 소품을 툭툭 치며 들썩인다. */
@@ -120,7 +150,7 @@ export class MungchiView {
     this.setLook(1);
     this.playTweens = [
       // 소품 쪽으로 몸을 기울이며 통통
-      this.scene.tweens.add({ targets: this.body, angle: 9, y: -7, duration: 260, yoyo: true, repeat: -1, repeatDelay: 380, ease: 'Sine.easeOut' }),
+      this.scene.tweens.add({ targets: this.body, angle: 7, y: -5, duration: 320, yoyo: true, repeat: -1, repeatDelay: 300, ease: 'Sine.easeInOut' }),
       // 소품이 굴러갔다 돌아온다
       this.scene.tweens.add({ targets: g, x: R * 1.7, angle: 70, duration: 520, yoyo: true, repeat: -1, repeatDelay: 120, ease: 'Sine.easeInOut' }),
     ];
@@ -130,6 +160,7 @@ export class MungchiView {
     for (const t of this.playTweens) t.remove();
     this.playTweens = [];
     this.body.angle = 0;
+    this.body.y = 0;
     this.prop?.destroy();
     this.prop = undefined;
   }
