@@ -1,0 +1,69 @@
+import Phaser from 'phaser';
+import type { GameContext } from './context';
+import { Clock } from './core/clock';
+import { EventBus } from './core/events';
+import { SaveSystem } from './core/saveSystem';
+import { GameStore } from './core/store';
+import { createBrowserStorage } from './core/storage';
+import { installEconomy } from './features/economy';
+import { WORLD } from './features/room/perspective';
+import { RENDER_SCALE, RoomScene } from './scenes/RoomScene';
+import { installDevPanel } from './ui/devPanel';
+import { UiLayer } from './ui/UiLayer';
+
+// 1) 공통 기반
+const storage = createBrowserStorage();
+const clock = new Clock(storage);
+const saves = new SaveSystem(storage);
+const store = new GameStore(saves.load(clock.now()), (state) => saves.write(state));
+const bus = new EventBus();
+const ctx: GameContext = { bus, store, clock, saves };
+
+// 2) 기능 끼우기. 새 기능은 여기에 한 줄씩 추가한다.
+installEconomy(ctx);
+
+// 3) 화면
+const uiRoot = document.getElementById('ui')!;
+const ui = new UiLayer(uiRoot, ctx);
+const params = new URLSearchParams(window.location.search);
+if (params.has('dev')) installDevPanel(uiRoot, ctx);
+
+const scene = new RoomScene(ctx, ui);
+const game = new Phaser.Game({
+  type: Phaser.AUTO,
+  parent: 'game',
+  backgroundColor: '#f6efe4',
+  width: WORLD.width * RENDER_SCALE,
+  height: WORLD.height * RENDER_SCALE,
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+  // HTML 버튼을 누를 때 그 아래 방 물건까지 눌리지 않도록 캔버스 밖 입력은 무시한다.
+  input: { activePointers: 2, windowEvents: false },
+  scene: [scene],
+});
+
+// 4) 앱을 닫거나 뒤로 보낼 때 바로 저장
+const saveNow = () => {
+  store.update((d) => void (d.progress.lastSeenAt = clock.now()));
+  store.flush();
+};
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveNow();
+});
+window.addEventListener('pagehide', saveNow);
+
+// 5) 자동 테스트가 게임 상태를 들여다볼 수 있는 창구 (읽기 위주)
+declare global {
+  interface Window {
+    __moongchi?: unknown;
+  }
+}
+window.__moongchi = {
+  ready: () => game.isBooted && scene.sys?.isActive() === true && !!scene.mungchi,
+  state: () => store.get(),
+  today: () => clock.dayKey(),
+  mungchiPoint: () => scene.mungchiClientPoint(),
+  hotspotPoint: (id: Parameters<RoomScene['hotspotClientPoint']>[0]) => scene.hotspotClientPoint(id),
+  zoomedHotspot: () => scene.zoomedHotspot,
+  freezeMungchi: (value = true) => scene.mungchi.setFrozen(value),
+  activity: () => scene.mungchi.activity,
+};

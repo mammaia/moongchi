@@ -1,0 +1,23 @@
+{
+  "name": "moongchi",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "test": "vitest run",
+    "e2e": "playwright test --trace off",
+    "check": "npm run build && npm run test && npm run e2e"
+  },
+  "dependencies": {
+    "phaser": "3.90.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "6.4.6",
+    "vitest": "3.2.7"
+  }
+}
