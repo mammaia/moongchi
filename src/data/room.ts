@@ -1,12 +1,13 @@
 /**
  * 원룸 배치표. GDD 스케치를 현관에서 창문 쪽으로 바라본 시점으로 옮긴 것.
- * 현관에서 남쪽(창문)을 보면 스케치의 왼쪽(신발장·조리대·컴퓨터)이 오른손 쪽,
+ * 현관에서 남쪽(창문)을 보면 스케치의 왼쪽(조리대·컴퓨터)이 오른손 쪽,
  * 스케치의 오른쪽(화장실·침대)이 왼손 쪽에 온다.
+ * [확정 2026-11-20] 신발장 자리에는 1인 가구용 작은 냉장고를 둔다.
  *
  * 좌표는 "바닥 좌표"로 적는다: u = 왼쪽(0)~오른쪽(1), t = 안쪽 창문 벽(0)~현관(1),
  * h = 그 자리 벽 높이에 대한 비율. 실제 화면 좌표는 RoomView가 계산한다.
  */
-export type HotspotId = 'window' | 'bed' | 'bathroom' | 'desk' | 'counter' | 'shoes' | 'entrance';
+export type HotspotId = 'window' | 'bed' | 'bathroom' | 'desk' | 'counter' | 'fridge' | 'entrance';
 
 export interface Hotspot {
   id: HotspotId;
@@ -45,21 +46,21 @@ export const HOTSPOTS: Record<HotspotId, Hotspot> = {
     id: 'desk',
     label: '컴퓨터 책상',
     title: '컴퓨터 책상',
-    body: '여기서 다이어리 바인더를 열고 다꾸를 할 예정이에요.',
+    body: '침대 쪽을 향한 모니터와 노트, 필기구. 여기서 다이어리 바인더를 열고 다꾸를 할 예정이에요.',
     feature: { name: '다이어리', stage: 8 },
   },
   counter: {
     id: 'counter',
     label: '조리대',
     title: '조리대',
-    body: '산책에서 모은 재료로 뭉치 간식을 만들 예정이에요.',
+    body: '2구 가스레인지와 싱크대가 있는 조리대. 산책에서 모은 재료로 뭉치 간식을 만들 예정이에요.',
     feature: { name: '간식 제조', stage: 5 },
   },
-  shoes: {
-    id: 'shoes',
-    label: '신발장',
-    title: '신발장',
-    body: '현관 옆 신발장. 눌렀을 때의 기능은 아직 GDD에 정해지지 않았어요.',
+  fridge: {
+    id: 'fridge',
+    label: '냉장고',
+    title: '냉장고',
+    body: '현관 옆 1인 가구용 작은 냉장고. 눌렀을 때의 기능은 아직 정해지지 않았어요.',
   },
   entrance: {
     id: 'entrance',

@@ -87,7 +87,7 @@ test('다음 날로 넘기면 다시 첫 보상을 받는다 (개발자 패널)'
   expect(await sparkle(page)).toBe(20);
 });
 
-for (const id of ['window', 'bed', 'bathroom', 'desk', 'counter', 'shoes', 'entrance']) {
+for (const id of ['window', 'bed', 'bathroom', 'desk', 'counter', 'fridge', 'entrance']) {
   test(`'${id}'을 누르면 확대되고 돌아올 수 있다`, async ({ page }) => {
     const errors = await open(page);
     const p = await page.evaluate((h) => (window.__moongchi as Api).hotspotPoint(h), id);

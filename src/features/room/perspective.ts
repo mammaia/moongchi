@@ -1,10 +1,11 @@
 /**
- * 현관에서 창문 쪽을 바라보는 원근 계산. 화면 크기는 세로 390 x 844 기준.
+ * 현관에서 창문 쪽을 바라보는 원근 계산. 화면 크기는 세로 390 x 700 기준.
  * u: 왼쪽(0)~오른쪽(1), t: 안쪽 창문 벽(0)~현관 쪽(1), h: 그 자리 벽 높이 비율.
  */
-export const WORLD = { width: 390, height: 844 } as const;
+export const WORLD = { width: 390, height: 700 } as const;
 
-const BACK = { left: 80, right: 310, floorY: 470, ceilY: 150 } as const;
+// 안쪽 벽을 넓게 잡아 방이 옆으로 넉넉해 보이게 한다.
+const BACK = { left: 40, right: 350, floorY: 420, ceilY: 120 } as const;
 
 export const floorY = (t: number) => BACK.floorY + (WORLD.height - BACK.floorY) * t;
 export const ceilY = (t: number) => BACK.ceilY - BACK.ceilY * t;
