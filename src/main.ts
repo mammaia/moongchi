@@ -2,10 +2,12 @@ import Phaser from 'phaser';
 import type { GameContext } from './context';
 import { Clock } from './core/clock';
 import { EventBus } from './core/events';
+import { createBrowserPhotoLibrary } from './core/photoLibrary';
 import { SaveSystem } from './core/saveSystem';
 import { GameStore } from './core/store';
 import { createBrowserStorage } from './core/storage';
 import { installEconomy } from './features/economy';
+import { installPhoto } from './features/photo';
 import { WORLD } from './features/room/perspective';
 import { RENDER_SCALE, RoomScene } from './scenes/RoomScene';
 import { installDevPanel } from './ui/devPanel';
@@ -17,7 +19,8 @@ const clock = new Clock(storage);
 const saves = new SaveSystem(storage);
 const store = new GameStore(saves.load(clock.now()), (state) => saves.write(state));
 const bus = new EventBus();
-const ctx: GameContext = { bus, store, clock, saves };
+const photos = createBrowserPhotoLibrary();
+const ctx: GameContext = { bus, store, clock, saves, photos };
 
 // 2) 기능 끼우기. 새 기능은 여기에 한 줄씩 추가한다.
 installEconomy(ctx);
@@ -40,6 +43,7 @@ const game = new Phaser.Game({
   input: { activePointers: 2, windowEvents: false },
   scene: [scene],
 });
+installPhoto(ctx, uiRoot, () => scene.takePhoto());
 
 // 4) 앱을 닫거나 뒤로 보낼 때 바로 저장
 const saveNow = () => {
@@ -77,5 +81,6 @@ window.__moongchi = {
   toys: () => scene.mungchi.toysInRoom,
   resume: (awayMs: number) => bus.emit('app:resumed', { awayMs }),
   openHotspotEvent: (id: string) => bus.emit('hotspot:opened', { id }),
+  photoCount: async () => (await photos.list()).length,
   forceActivity: (a: Parameters<RoomScene['mungchi']['forceActivity']>[0]) => scene.mungchi.forceActivity(a),
 };

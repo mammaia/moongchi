@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { scaleAtY } from '../room/perspective';
+import { PHOTO_HIDDEN_KEY } from '../../core/photoLibrary';
 import { BALANCE } from '../../data/balance';
 import type { Activity } from './brain';
 import type { GaitPose } from './gait';
@@ -186,7 +187,8 @@ export class MungchiView {
       const star = this.scene.add
         .text(this.x, this.y - R * 0.4, '✦', { ...TEXT_STYLE, fontSize: '18px', color: '#f5c84c' })
         .setOrigin(0.5)
-        .setDepth(20);
+        .setDepth(20)
+        .setData(PHOTO_HIDDEN_KEY, true); // 보상 반짝이는 UI라서 사진에는 안 나온다
       this.scene.tweens.add({
         targets: star,
         x: this.x + Math.cos(angle) * 70,

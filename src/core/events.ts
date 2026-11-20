@@ -18,6 +18,9 @@ export type GameEvents = {
   'mungchi:activity': { activity: MungchiActivity; previous: MungchiActivity; settling: boolean; at: number };
   /** 앱을 뒤로 보냈다가(다른 앱, 화면 끔) 다시 돌아왔다. awayMs = 밖에 있던 시간 */
   'app:resumed': { awayMs: number };
+  /** 사진을 앨범에 저장했다 / 지웠다. 이후 다이어리가 듣고 붙여 둔 사진을 정리할 수 있다. */
+  'photo:saved': { id: string; takenAt: number; dayKey: string };
+  'photo:deleted': { id: string; dayKey: string };
   /** 개발자 패널: 뭉치에게 이 행동을 바로 시키기 */
   'dev:force-activity': { activity: MungchiAutoActivity };
 };

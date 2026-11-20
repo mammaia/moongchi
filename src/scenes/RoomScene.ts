@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { GameContext } from '../context';
+import { PHOTO_HIDDEN_KEY } from '../core/photoLibrary';
 import { HOTSPOTS, type HotspotId } from '../data/room';
 import { MungchiController } from '../features/character';
 import { RoomView } from '../features/room/RoomView';
@@ -36,6 +37,24 @@ export class RoomScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     this.mungchi.update(delta);
+  }
+
+  /**
+   * 사진 찍기: 지금 보이는 게임 화면을 그대로 찍는다. 뭉치의 자세는 건드리지 않는다.
+   * 이름표·보상 반짝이처럼 '사진에서 숨김' 표시가 있는 것은 찍는 한 장면만 숨겼다가 되돌린다.
+   * HTML로 된 버튼과 스파클 표시는 캔버스 밖에 있어서 처음부터 사진에 들어가지 않는다.
+   */
+  takePhoto(): Promise<HTMLImageElement> {
+    type Hideable = Phaser.GameObjects.GameObject & Phaser.GameObjects.Components.Visible;
+    const hidden = (this.children.list as Hideable[]).filter((o) => o.getData(PHOTO_HIDDEN_KEY) === true && o.visible);
+    for (const o of hidden) o.setVisible(false);
+    return new Promise((resolve, reject) => {
+      this.game.renderer.snapshot((image) => {
+        for (const o of hidden) if (o.active) o.setVisible(true);
+        if (image instanceof HTMLImageElement) resolve(image);
+        else reject(new Error('화면을 찍지 못했어요'));
+      }, 'image/png');
+    });
   }
 
   /** 테스트용: 뭉치의 현재 위치를 브라우저 화면 좌표로 알려준다. */

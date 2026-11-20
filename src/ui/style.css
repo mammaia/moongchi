@@ -164,3 +164,103 @@ html, body {
   color: #2b221b;
   font: 600 12px system-ui, sans-serif;
 }
+
+/* ───────── 사진: 카메라 버튼, 미리보기, 앨범 ───────── */
+.photo-bar {
+  /* 왼쪽 아래: 방 물건(냉장고·현관 등)을 누르는 자리를 가리지 않는 곳 */
+  position: absolute;
+  left: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.photo-bar.hidden { opacity: 0; transform: translateY(12px); pointer-events: none !important; }
+.photo-btn {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 250, 243, 0.94);
+  color: var(--ink);
+  box-shadow: 0 3px 10px rgba(120, 90, 60, 0.22);
+  padding: 0;
+}
+.photo-btn svg { width: 55%; height: 55%; }
+.photo-btn:active { transform: scale(0.94); }
+.album-btn { width: 44px; height: 44px; }
+.camera-btn { width: 60px; height: 60px; background: var(--accent); color: #fff; }
+
+.photo-flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none !important;
+}
+.photo-flash.go { animation: photo-flash 320ms ease-out; }
+@keyframes photo-flash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+
+.photo-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 16px) 16px calc(env(safe-area-inset-bottom) + 16px);
+  background: var(--bg);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.photo-overlay[hidden] { display: none; }
+.photo-preview, .photo-viewer { justify-content: center; align-items: center; gap: 12px; background: rgba(43, 34, 27, 0.88); }
+.photo-viewer { z-index: 2; }
+.photo-frame {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 420px;
+  padding: 10px 10px 12px;
+  border-radius: 6px;
+  background: #fffaf3;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  display: flex;
+}
+.photo-frame img { display: block; max-width: 100%; max-height: calc(100dvh - 220px); object-fit: contain; border-radius: 2px; }
+.photo-date { margin: 0; color: #fffaf3; font-size: 14px; font-weight: 600; }
+.photo-actions { display: flex; gap: 10px; width: 100%; max-width: 420px; }
+.photo-actions .btn { flex: 1; }
+.btn.ghost { background: rgba(255, 250, 243, 0.16); color: #fffaf3; box-shadow: inset 0 0 0 1.5px rgba(255, 250, 243, 0.6); }
+.btn.ghost.danger { color: #ffd2c8; box-shadow: inset 0 0 0 1.5px rgba(255, 190, 175, 0.7); }
+.btn.danger-fill { background: #d9694f; }
+.btn:disabled { opacity: 0.6; }
+.photo-confirm { width: 100%; max-width: 420px; text-align: center; color: #fffaf3; }
+.photo-confirm p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+
+.album { z-index: 1; }
+.album-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.album-head h2 { margin: 0; font-size: 20px; }
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 16px;
+  box-shadow: 0 2px 8px rgba(120, 90, 60, 0.15);
+}
+.album-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding-bottom: 12px; }
+.album-empty { margin-top: 30vh; text-align: center; color: var(--ink-soft); font-size: 14px; line-height: 1.6; white-space: pre-line; }
+.album-day h3 { margin: 16px 0 8px; font-size: 14px; color: var(--ink-soft); }
+.album-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.album-cell {
+  aspect-ratio: 390 / 700;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--line);
+}
+.album-cell img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.photo-toast { z-index: 3; top: auto; bottom: calc(env(safe-area-inset-bottom) + 110px); }
