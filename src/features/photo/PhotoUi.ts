@@ -46,6 +46,8 @@ type Shot = CanvasImageSource & { width: number; height: number };
 interface Taken {
   shot: Shot;
   full: { blob: Blob; width: number; height: number };
+  /** 자르지 않았을 때 쓸 작은 사진 (미리 만들기 시작해 둔 것) */
+  fullThumb: Promise<{ blob: Blob; width: number; height: number }>;
   takenAt: number;
   dayKey: string;
   activity?: string;
@@ -113,8 +115,12 @@ export class PhotoUi {
     try {
       const shot = await this.capture();
       this.playFlash();
-      const full = await encode(shot, { sx: 0, sy: 0, sw: shot.width, sh: shot.height }, shot.width);
-      this.showPreview({ shot, full, takenAt, dayKey, activity });
+      const whole = { sx: 0, sy: 0, sw: shot.width, sh: shot.height };
+      const full = await encode(shot, whole, shot.width);
+      // 자르지 않고 저장할 때가 많으니, 미리보기를 보는 동안 작은 사진도 미리 만들어 둔다 (저장이 빨라진다)
+      const fullThumb = encode(shot, whole, PHOTO.thumbWidth);
+      fullThumb.catch(() => undefined);
+      this.showPreview({ shot, full, fullThumb, takenAt, dayKey, activity });
     } catch (error) {
       console.error('[photo] 촬영 실패', error);
       this.showToast('사진을 찍지 못했어요. 다시 해 볼까요?');
@@ -133,8 +139,9 @@ export class PhotoUi {
   private async buildPhoto(taken: Taken, crop: CropRect): Promise<PhotoRecord> {
     const { shot, full } = taken;
     const area = cropToPixels(crop, shot.width, shot.height);
-    const image = isFullCrop(crop) ? full : await encode(shot, area, area.sw);
-    const thumb = await encode(shot, area, PHOTO.thumbWidth);
+    const whole = isFullCrop(crop);
+    const image = whole ? full : await encode(shot, area, area.sw);
+    const thumb = whole ? await taken.fullThumb : await encode(shot, area, PHOTO.thumbWidth);
     return {
       v: PHOTO_RECORD_VERSION,
       id: makePhotoId(taken.takenAt),
