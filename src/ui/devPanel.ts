@@ -1,7 +1,7 @@
 import type { GameContext } from '../context';
 import type { MungchiActivity, MungchiAutoActivity } from '../core/events';
 import { createNewSave } from '../core/saveSchema';
-import { isPetRewardAvailable } from '../features/economy/sparkle';
+import { isDiaryRewardAvailable, isPetRewardAvailable } from '../features/economy/sparkle';
 
 /**
  * 개발자 패널. 주소 끝에 ?dev=1 을 붙이면 나타난다. 일반 플레이어에게는 보이지 않는다.
@@ -54,6 +54,7 @@ export function installDevPanel(root: HTMLElement, ctx: GameContext): void {
       ['마지막 보상일', s.petting.lastRewardDay ?? '없음'],
       ['오늘 보상', isPetRewardAvailable(s, today) ? '받을 수 있음' : '받음'],
       ['쓰다듬은 횟수', String(s.petting.totalStrokes)],
+      ['오늘 다이어리 보상', isDiaryRewardAvailable(s, today) ? '받을 수 있음' : '받음'],
       ['스파클', String(s.wallet.sparkle)],
       ['뭉치 행동', activityText],
     ];

@@ -320,15 +320,28 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: calc(env(safe-area-inset-top) + 12px) 12px calc(env(safe-area-inset-bottom) + 12px);
+  padding: calc(env(safe-area-inset-top) + 10px) 10px calc(env(safe-area-inset-bottom) + 10px);
   /* 따뜻한 나무 책상 */
   background:
     repeating-linear-gradient(92deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 9px),
     linear-gradient(180deg, #d6b48f 0%, #c49c74 100%);
+  -webkit-user-select: none;
+  user-select: none;
 }
 .diary[hidden] { display: none; }
-.diary-head { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 460px; margin-bottom: 8px; }
+.diary-head { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 460px; margin-bottom: 6px; }
+.diary-title { flex: 1; display: flex; align-items: baseline; gap: 10px; }
 .diary-head h2 { margin: 0; font-size: 18px; color: #fffaf3; text-shadow: 0 1px 2px rgba(80, 50, 25, 0.35); }
+.diary-pageno { color: #fffaf3; font-weight: 700; font-size: 13px; opacity: 0.9; font-variant-numeric: tabular-nums; }
+.diary-sparkle {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 250, 243, 0.92);
+  color: #c98a2b;
+  font-weight: 800;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
 
 .diary-stage {
   flex: 1;
@@ -341,16 +354,14 @@ html, body {
 }
 .diary-binder {
   position: relative;
-  /* 화면에 맞게: 가로·세로 중 좁은 쪽 기준, 최대 420px */
-  --page-w: min(calc(100vw - 52px), calc((100dvh - 190px) / 1.41), 420px);
+  /* 화면에 맞게: 가로·세로 중 좁은 쪽 기준, 최대 420px. 190px = 머리 + 아래 도구 막대 + 여백 */
+  --page-w: min(calc(100vw - 44px), calc((100dvh - 190px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) / 1.41), 420px);
   width: var(--page-w);
-  padding-left: 18px;
+  container-type: inline-size; /* 속지 무늬 크기(cqw)의 기준 */
+  padding: 6px 6px 6px 18px;
   border-radius: 6px 14px 14px 6px;
   background: #b77d5b; /* 바인더 표지 (페이지 뒤로 살짝 보임) */
   box-shadow: 0 14px 30px rgba(80, 50, 25, 0.35), inset 0 0 0 2px rgba(255, 255, 255, 0.08);
-  padding-top: 6px;
-  padding-bottom: 6px;
-  padding-right: 6px;
 }
 .diary-page {
   position: relative;
@@ -358,14 +369,9 @@ html, body {
   aspect-ratio: 1 / 1.41;
   container-type: inline-size;
   border-radius: 3px 10px 10px 3px;
-  overflow: hidden;
-  /* 크림색 모눈 속지 + 종이 결 */
+  overflow: hidden; /* 페이지 밖으로 나간 부분은 그리지 않는다 (자리는 규칙에서 페이지 안으로 바로잡는다) */
+  /* 속지 무늬는 data/diaryDecor.ts의 PAPERS에서 정해 화면이 직접 넣는다. 이 색은 그 전에 잠깐 보이는 바탕 */
   background-color: #fbf4e6;
-  background-image:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.45  0 0 0 0 0.33  0 0 0 0 0.2  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"),
-    linear-gradient(rgba(214, 190, 160, 0.28) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(214, 190, 160, 0.28) 1px, transparent 1px);
-  background-size: 160px 160px, 5cqw 5cqw, 5cqw 5cqw;
   box-shadow: inset 6px 0 10px -6px rgba(120, 80, 40, 0.35);
   touch-action: pan-y;
 }
@@ -396,6 +402,7 @@ html, body {
   flex-direction: column;
   justify-content: space-around;
   pointer-events: none;
+  z-index: 1;
 }
 .diary-rings span {
   display: block;
@@ -417,82 +424,214 @@ html, body {
 }
 .diary-date b { font-size: 6cqw; letter-spacing: -0.02em; }
 .diary-date span { font-size: 3.4cqw; color: var(--ink-soft); }
-
-.diary-items { position: absolute; inset: 0; pointer-events: none; }
-.diary-items > * { pointer-events: auto; }
-
-/* 사진 (폴라로이드처럼) */
-.diary-photo {
+.diary-hint {
   position: absolute;
+  left: 10%;
+  right: 6%;
+  top: 42%;
+  text-align: center;
+  white-space: pre-line;
+  font-size: 4cqw;
+  line-height: 1.6;
+  color: rgba(138, 116, 98, 0.8);
+  pointer-events: none;
+}
+.diary-hint[hidden] { display: none; }
+
+/* 붙인 물건들: 자리는 페이지 비율(%)로, 겹침 순서는 z-index로 */
+.diary-items { position: absolute; inset: 0; isolation: isolate; pointer-events: none; }
+.diary-item {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none; /* 끌 때 화면이 움직이거나 확대되지 않게 */
+  transform-origin: 50% 50%;
+  container-type: inline-size; /* 안쪽 크기(cqw)를 물건 너비 기준으로: 키우면 모양 그대로 커진다 */
+}
+.diary-item.selected { outline: 2px dashed rgba(229, 120, 80, 0.9); outline-offset: 3px; }
+.diary-item.dragging { filter: drop-shadow(0 8px 10px rgba(80, 50, 25, 0.3)); }
+.diary-handle {
+  position: absolute;
+  right: -14px;
+  bottom: -14px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e57850;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(80, 50, 25, 0.35);
+  touch-action: none;
+  z-index: 2;
+}
+
+/* 사진 (폴라로이드). 흰 테두리는 사진 너비 기준(cqw) = data/diary.ts photoFrame */
+.diary-photo-frame {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1.5cqw;
-  padding: 2.4cqw 2.4cqw 7cqw;
-  border: 0;
+  gap: 3cqw;
+  padding: 4.5cqw 4.5cqw 13cqw;
   border-radius: 2px;
   background: #fffdf8;
   color: var(--ink-soft);
-  font: inherit;
   box-shadow: 0 3px 10px rgba(110, 75, 40, 0.25);
-  transform-origin: 50% 50%;
 }
-.diary-photo img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 1px; -webkit-user-drag: none; }
-.diary-photo[data-state='empty'],
-.diary-photo[data-state='missing'] {
-  padding: 3cqw;
-  background: rgba(255, 253, 248, 0.6);
+.diary-photo-frame img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 1px; -webkit-user-drag: none; pointer-events: none; }
+.diary-photo[data-state='missing'] .diary-photo-frame,
+.diary-photo[data-state='loading'] .diary-photo-frame {
+  background: rgba(240, 225, 205, 0.75);
   box-shadow: none;
   outline: 2px dashed rgba(170, 130, 95, 0.55);
   outline-offset: -2px;
 }
-.diary-photo[data-state='missing'] { background: rgba(240, 225, 205, 0.6); }
-.diary-photo-plus { font-size: 10cqw; line-height: 1; color: var(--accent); }
-.diary-photo-note { font-size: 3.6cqw; font-weight: 700; text-align: center; color: var(--ink); }
-.diary-photo-sub { font-size: 3.2cqw; color: var(--ink-soft); }
-.diary-photo:active { filter: brightness(0.97); }
+.diary-photo-note { font-size: 7cqw; font-weight: 700; text-align: center; color: var(--ink); }
+.diary-photo-sub { font-size: 6cqw; text-align: center; color: var(--ink-soft); }
 
-/* 사진 아래 글: 줄 노트 */
-.diary-caption { position: absolute; display: block; }
-.diary-caption textarea {
+/* 글: 글 칸 너비 기준 글자 크기라서 키우면 글씨도 커진다 (기본 너비 0.8에서 페이지의 4.6%) */
+.diary-text-body,
+.diary-text-input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 1cqw 1.5cqw;
+  color: var(--ink);
+  font: 500 5.75cqw / 9.25cqw system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+  white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.diary-text-input {
+  min-height: 21cqw;
+  border: 0;
+  border-radius: 4px;
+  resize: none;
+  overflow: hidden;
+  background: rgba(255, 253, 248, 0.85);
+  box-shadow: 0 0 0 2px rgba(229, 120, 80, 0.6);
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: auto;
+}
+.diary-text-input::placeholder { color: rgba(138, 116, 98, 0.65); }
+.diary-count {
+  position: absolute;
+  right: 0;
+  bottom: -18px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 250, 243, 0.9);
+  font-size: 11px;
+  color: var(--ink-soft);
+}
+
+/* 스티커: 흰 칼선 + 살짝 그림자 */
+.diary-sticker img { display: block; width: 100%; height: 100%; pointer-events: none; -webkit-user-drag: none; filter: drop-shadow(0 1px 1.5px rgba(80, 50, 25, 0.3)); }
+
+/* 마스킹테이프: 반투명, 양 끝은 손으로 찢은 톱니 */
+.diary-tape-body {
   display: block;
   width: 100%;
   height: 100%;
-  padding: 0 1cqw;
-  border: 0;
-  resize: none;
-  background: repeating-linear-gradient(transparent 0, transparent calc(7.4cqw - 1px), rgba(176, 140, 105, 0.45) calc(7.4cqw - 1px), rgba(176, 140, 105, 0.45) 7.4cqw);
-  color: var(--ink);
-  /* 휴대폰에서 글 칸을 누를 때 화면이 확대되지 않도록 16px 이상 */
-  font: 500 max(16px, 4.6cqw) / 7.4cqw system-ui, -apple-system, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
-  -webkit-user-select: text;
-  user-select: text;
-  outline: none;
+  opacity: 0.86;
+  clip-path: polygon(0 0, 100% 0, 98.5% 20%, 100% 40%, 98.5% 60%, 100% 80%, 98.5% 100%, 0 100%, 1.5% 80%, 0 60%, 1.5% 40%, 0 20%);
+  box-shadow: inset 0 0 0 100vmax rgba(255, 255, 255, 0.06);
 }
-.diary-caption textarea::placeholder { color: rgba(138, 116, 98, 0.65); }
-.diary-count { position: absolute; right: 0; bottom: -4.6cqw; font-size: 3cqw; color: var(--ink-soft); }
 
-.diary-nav {
+/* 아래 막대: ◀ 도구 ▶ */
+.diary-bar {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 18px;
-  margin-top: 10px;
+  gap: 6px;
+  width: 100%;
+  max-width: 460px;
+  margin-top: 8px;
 }
+.diary-tools { flex: 1; display: flex; justify-content: center; gap: 4px; min-width: 0; }
+.diary-tools[hidden] { display: none; }
+.diary-tool {
+  flex: 1;
+  max-width: 64px;
+  min-width: 0;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 250, 243, 0.95);
+  color: var(--ink);
+  font: inherit;
+  box-shadow: 0 3px 8px rgba(80, 50, 25, 0.22);
+}
+.diary-tool:active { transform: scale(0.95); }
+.diary-tool-icon { font-size: 18px; line-height: 1; }
+.diary-tool-label { font-size: 10.5px; font-weight: 700; white-space: nowrap; letter-spacing: -0.03em; }
+.diary-selbar .diary-tool { background: #fff4ea; }
 .diary-arrow {
-  width: 48px;
-  height: 48px;
+  flex: none;
+  width: 40px;
+  height: 40px;
   border: 0;
   border-radius: 50%;
   background: rgba(255, 250, 243, 0.95);
   color: var(--ink);
-  font-size: 16px;
+  font-size: 14px;
   box-shadow: 0 3px 10px rgba(80, 50, 25, 0.25);
 }
 .diary-arrow:disabled { opacity: 0.35; }
 .diary-arrow:active:not(:disabled) { transform: scale(0.94); }
-.diary-pageno { min-width: 64px; text-align: center; color: #fffaf3; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums; }
+
+/* 스티커·테이프·속지 서랍 (아래에서 올라옴) */
+.diary-tray {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(env(safe-area-inset-bottom) + 76px);
+  z-index: 4;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 10px 12px 12px;
+  border-radius: 16px;
+  background: rgba(255, 250, 243, 0.98);
+  box-shadow: 0 8px 24px rgba(80, 50, 25, 0.3);
+}
+.diary-tray[hidden] { display: none; }
+.icon-btn.small { width: 32px; height: 32px; font-size: 14px; }
+.diary-tray-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--ink); font-size: 14px; }
+.diary-tray-grid { display: grid; gap: 8px; }
+.diary-tray-grid.sticker { grid-template-columns: repeat(5, 1fr); }
+.diary-tray-grid.tape,
+.diary-tray-grid.paper { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.diary-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: #f3e9dc;
+  color: var(--ink);
+  font: inherit;
+}
+.diary-option img { width: 100%; aspect-ratio: 1; }
+.diary-option { container-type: inline-size; }
+.diary-option.tape .diary-tape-body { height: 18px; }
+.diary-option-name { font-size: 11px; font-weight: 700; }
+.diary-paper-swatch { display: block; width: 100%; aspect-ratio: 1 / 0.7; border-radius: 4px; box-shadow: inset 0 0 0 1px rgba(120, 80, 40, 0.15); }
+.diary-option.paper.on { box-shadow: 0 0 0 2.5px #e57850; }
+.diary-option:active { transform: scale(0.95); }
 
 .diary-picker {
   position: absolute;
@@ -505,7 +644,7 @@ html, body {
 }
 .diary-picker[hidden] { display: none; }
 .btn.ghost-ink { background: transparent; color: #b5583f; box-shadow: inset 0 0 0 1.5px rgba(181, 88, 63, 0.5); margin: 4px 0 6px; }
-.diary-toast { z-index: 7; top: auto; bottom: calc(env(safe-area-inset-bottom) + 80px); }
+.diary-toast { z-index: 7; top: auto; bottom: calc(env(safe-area-inset-bottom) + 84px); }
 
 /* ───────── 찍기 전 틀 고르기 ───────── */
 .photo-framing { position: absolute; inset: 0; z-index: 1; }
