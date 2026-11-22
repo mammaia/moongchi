@@ -44,7 +44,12 @@ const game = new Phaser.Game({
   input: { activePointers: 2, windowEvents: false },
   scene: [scene],
 });
-installPhoto(ctx, uiRoot, () => scene.takePhoto());
+installPhoto(
+  ctx,
+  uiRoot,
+  () => scene.takePhoto(),
+  () => ({ rect: game.canvas.getBoundingClientRect(), width: game.canvas.width, height: game.canvas.height }),
+);
 installDiary(ctx, uiRoot);
 
 // 4) 앱을 닫거나 뒤로 보낼 때 바로 저장

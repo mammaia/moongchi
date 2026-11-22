@@ -506,3 +506,48 @@ html, body {
 .diary-picker[hidden] { display: none; }
 .btn.ghost-ink { background: transparent; color: #b5583f; box-shadow: inset 0 0 0 1.5px rgba(181, 88, 63, 0.5); margin: 4px 0 6px; }
 .diary-toast { z-index: 7; top: auto; bottom: calc(env(safe-area-inset-bottom) + 80px); }
+
+/* ───────── 찍기 전 틀 고르기 ───────── */
+.photo-framing { position: absolute; inset: 0; z-index: 1; }
+.photo-framing[hidden] { display: none; }
+.photo-framing .crop-stage { position: fixed; border-radius: 0; }
+.framing-hint {
+  position: absolute;
+  left: 50%;
+  top: calc(env(safe-area-inset-top) + 14px);
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(78, 61, 48, 0.85);
+  color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.framing-controls {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 420px;
+  margin: 0 auto;
+}
+.framing-controls .btn { width: auto; flex: 1; padding: 10px; background: rgba(43, 34, 27, 0.6); }
+.shutter {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 5px solid #fffaf3;
+  background: var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  padding: 0;
+}
+.shutter:active { transform: scale(0.94); }
+/* 틀을 고르는 동안 스파클 표시·안내·카메라 버튼 등은 잠깐 숨긴다 (사진에는 원래 안 찍힌다) */
+#ui.is-framing > :not(.photo-framing):not(.photo-flash):not(.toast) { visibility: hidden; }
