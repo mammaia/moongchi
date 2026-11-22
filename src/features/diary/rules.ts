@@ -11,6 +11,31 @@ export interface PageDefaults {
   photoLayout: Omit<ItemLayout, 'z'>;
   captionLayout: Omit<ItemLayout, 'z'>;
   captionMaxLength: number;
+  /** 페이지 세로/가로 비율 */
+  pageAspect: number;
+  photoMax: { w: number; h: number };
+  photoFrame: { side: number; top: number; bottom: number };
+}
+
+/**
+ * 사진 비율에 맞는 사진 틀 크기. 틀 안의 사진 칸이 사진과 같은 비율이 되어 잘리는 부분이 없다.
+ * 가운데(centerX)와 윗변(top)은 지키고, photoMax를 넘지 않게 줄인다.
+ */
+export function fitPhotoBox(
+  photoW: number,
+  photoH: number,
+  centerX: number,
+  top: number,
+  d: Pick<PageDefaults, 'pageAspect' | 'photoMax' | 'photoFrame'>,
+): { x: number; y: number; w: number; h: number } {
+  const ratio = photoW > 0 && photoH > 0 ? photoH / photoW : 1;
+  const padW = d.photoFrame.side * 2;
+  const padH = d.photoFrame.top + d.photoFrame.bottom;
+  // 페이지 너비를 1로 볼 때 틀 높이 = ((w - padW) * ratio + padH), 페이지 높이 = pageAspect
+  const wForMaxH = (d.photoMax.h * d.pageAspect - padH) / ratio + padW;
+  const w = Math.max(padW + 0.05, Math.min(d.photoMax.w, wForMaxH));
+  const h = ((w - padW) * ratio + padH) / d.pageAspect;
+  return { x: centerX - w / 2, y: top, w, h };
 }
 
 /** 물건 id: 시각 + 무작위 글자 */
@@ -78,11 +103,19 @@ export function setPagePhoto(
   now: number,
   defaults: PageDefaults,
   makeId: () => string = () => makeItemId(now),
+  size?: { width: number; height: number },
 ): void {
   const page = ensurePage(diary, dayKey, now, defaults.paper);
   const existing = pagePhoto(page);
-  if (existing) existing.photoId = photoId;
-  else page.items.push({ id: makeId(), kind: 'photo', photoId, layout: { ...defaults.photoLayout, z: nextZ(page) } });
+  const base = existing?.layout ?? { ...defaults.photoLayout, z: nextZ(page) };
+  // 사진 크기를 알면 틀을 사진 비율에 맞춘다 (가운데·윗변·기울기는 그대로)
+  const layout = size
+    ? { ...base, ...fitPhotoBox(size.width, size.height, base.x + base.w / 2, base.y, defaults) }
+    : base;
+  if (existing) {
+    existing.photoId = photoId;
+    existing.layout = layout;
+  } else page.items.push({ id: makeId(), kind: 'photo', photoId, layout });
 }
 
 /** 사진 떼기. 글은 남는다. */

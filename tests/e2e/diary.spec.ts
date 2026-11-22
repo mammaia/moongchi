@@ -71,6 +71,12 @@ const photoImg = (page: Page) => page.getByTestId('diary-photo').locator('img');
 async function expectPhotoLoaded(page: Page) {
   await expect(page.getByTestId('diary-photo')).toHaveAttribute('data-state', 'photo');
   await expect.poll(() => photoImg(page).evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0);
+  // 사진 틀이 사진 비율에 맞아서 사진이 잘리지 않고 다 보인다
+  const [shown, natural] = await photoImg(page).evaluate((i: HTMLImageElement) => [
+    i.clientHeight / i.clientWidth,
+    i.naturalHeight / i.naturalWidth,
+  ]);
+  expect(Math.abs(shown - natural) / natural).toBeLessThan(0.04);
 }
 
 test('책상을 누르면 바인더 다이어리가 오늘 날짜로 열리고, 닫으면 방으로 돌아온다', async ({ page }) => {
