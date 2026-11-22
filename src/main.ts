@@ -6,6 +6,7 @@ import { createBrowserPhotoLibrary } from './core/photoLibrary';
 import { SaveSystem } from './core/saveSystem';
 import { GameStore } from './core/store';
 import { createBrowserStorage } from './core/storage';
+import { installDiary } from './features/diary';
 import { installEconomy } from './features/economy';
 import { installPhoto } from './features/photo';
 import { WORLD } from './features/room/perspective';
@@ -44,6 +45,7 @@ const game = new Phaser.Game({
   scene: [scene],
 });
 installPhoto(ctx, uiRoot, () => scene.takePhoto());
+installDiary(ctx, uiRoot);
 
 // 4) 앱을 닫거나 뒤로 보낼 때 바로 저장
 const saveNow = () => {
@@ -84,5 +86,6 @@ window.__moongchi = {
   openHotspotEvent: (id: string) => bus.emit('hotspot:opened', { id }),
   photoCount: async () => (await photos.list()).length,
   photoSizes: async () => (await photos.list()).map((p) => [p.width, p.height]),
+  diary: () => store.get().diary,
   forceActivity: (a: Parameters<RoomScene['mungchi']['forceActivity']>[0]) => scene.mungchi.forceActivity(a),
 };
