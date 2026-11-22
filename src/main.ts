@@ -85,6 +85,7 @@ window.__moongchi = {
   resume: (awayMs: number) => bus.emit('app:resumed', { awayMs }),
   openHotspotEvent: (id: string) => bus.emit('hotspot:opened', { id }),
   photoCount: async () => (await photos.list()).length,
+  photoSizes: async () => (await photos.list()).map((p) => [p.width, p.height]),
   diary: () => store.get().diary,
   forceActivity: (a: Parameters<RoomScene['mungchi']['forceActivity']>[0]) => scene.mungchi.forceActivity(a),
 };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryPhotoLibrary, PHOTO_RECORD_VERSION, type PhotoRecord } from '../../src/core/photoLibrary';
 import { SAVE_VERSION, createNewSave } from '../../src/core/saveSchema';
+import { FULL_CROP, cropToPixels, isFullCrop, moveCrop, resizeCrop } from '../../src/features/photo/crop';
 import { fitWidth, formatDayLabel, formatTakenAt, formatTime, groupByDay, makePhotoId } from '../../src/features/photo/rules';
 
 const at = (y: number, m: number, d: number, h = 12, min = 0) => new Date(y, m - 1, d, h, min).getTime();
@@ -70,5 +71,47 @@ describe('사진 보관함 (메모리판으로 동작 확인)', () => {
   it('사진은 진행 상황 저장과 따로라서 저장에 사진 칸이 없다 (다이어리는 사진 id만 적는다)', () => {
     expect(SAVE_VERSION).toBeGreaterThanOrEqual(1);
     expect(Object.keys(createNewSave(0)).sort()).toEqual(['character', 'diary', 'petting', 'progress', 'version', 'wallet']);
+  });
+});
+
+describe('사진 자르기 [가정: 찍은 뒤 미리보기에서 자르기]', () => {
+  const min = 0.2;
+  it('처음에는 사진 전체', () => {
+    expect(isFullCrop(FULL_CROP)).toBe(true);
+    expect(cropToPixels(FULL_CROP, 780, 1400)).toEqual({ sx: 0, sy: 0, sw: 780, sh: 1400 });
+  });
+
+  it('모서리를 끌면 반대쪽 모서리는 그대로 두고 크기가 바뀐다', () => {
+    const r = resizeCrop(FULL_CROP, 'se', -0.5, -0.25, min, min);
+    expect(r).toEqual({ x: 0, y: 0, w: 0.5, h: 0.75 });
+    const r2 = resizeCrop(r, 'nw', 0.1, 0.25, min, min);
+    expect(r2.x).toBeCloseTo(0.1);
+    expect(r2.y).toBeCloseTo(0.25);
+    expect(r2.x + r2.w).toBeCloseTo(0.5);
+    expect(r2.y + r2.h).toBeCloseTo(0.75);
+    expect(isFullCrop(r2)).toBe(false);
+  });
+
+  it('최소 크기보다 작아지거나 사진 밖으로 나가지 않는다', () => {
+    const tiny = resizeCrop(FULL_CROP, 'ne', -5, 5, min, min);
+    expect(tiny.w).toBeCloseTo(min);
+    expect(tiny.h).toBeCloseTo(min);
+    expect(tiny.y + tiny.h).toBeCloseTo(1);
+    const out = resizeCrop({ x: 0.2, y: 0.2, w: 0.5, h: 0.5 }, 'nw', -3, -3, min, min);
+    expect(out).toEqual({ x: 0, y: 0, w: 0.7, h: 0.7 });
+  });
+
+  it('틀을 옮겨도 사진 밖으로 나가지 않는다', () => {
+    const r = { x: 0.2, y: 0.2, w: 0.5, h: 0.5 };
+    const moved = moveCrop(r, 0.1, -0.05);
+    expect(moved.x).toBeCloseTo(0.3);
+    expect(moved.y).toBeCloseTo(0.15);
+    expect(moveCrop(r, 9, 9)).toEqual({ x: 0.5, y: 0.5, w: 0.5, h: 0.5 });
+    expect(moveCrop(r, -9, -9)).toEqual({ x: 0, y: 0, w: 0.5, h: 0.5 });
+  });
+
+  it('픽셀로 바꿀 때 사진 안쪽, 최소 1픽셀', () => {
+    expect(cropToPixels({ x: 0.5, y: 0.25, w: 0.5, h: 0.5 }, 780, 1400)).toEqual({ sx: 390, sy: 350, sw: 390, sh: 700 });
+    expect(cropToPixels({ x: 1, y: 1, w: 0, h: 0 }, 10, 10)).toEqual({ sx: 9, sy: 9, sw: 1, sh: 1 });
   });
 });
