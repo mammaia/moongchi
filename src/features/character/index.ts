@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { GameContext } from '../../context';
 import type { MungchiActivity } from '../../core/events';
 import { BALANCE } from '../../data/balance';
-import { MUNGCHI_FLOOR } from '../../data/room';
+import { MUNGCHI_FLOOR, TOY_SPOTS } from '../../data/room';
 import { point } from '../room/perspective';
 import { MungchiView } from './MungchiView';
 import { furnitureFrame, phaseMs, planFurniture, type FurnitureKind, type FurniturePhase, type FurniturePlan } from './furniture';
@@ -62,7 +62,7 @@ export class MungchiController {
   private furn: { since: number; plan: FurniturePlan; phase: 'approach' | FurniturePhase; elapsed: number } | null = null;
   /** 가구 위(또는 뒤)에 있는 중. 다른 곳으로 움직이기 전에 먼저 내려와야 한다. */
   private perch: { plan: FurniturePlan; exitElapsed: number | null } | null = null;
-  /** 방바닥에 놓인 장난감. 놀고 나도 남고, 앱을 나갔다 들어오면 치운다. */
+  /** 방바닥에 놓인 장난감(양말, 휴지심). 항상 방에 있고, 놀면서 옮긴 자리에 그대로 남는다. */
   private readonly toys = new Map<PlayProp, ToyView>();
   /** 지금 하고 있는 놀이 동작 */
   private playRun: { since: number; toy: ToyView; move: PlayMove; elapsed: number; frame: PlayFrame | null } | null = null;
@@ -78,6 +78,10 @@ export class MungchiController {
     const away = ctx.clock.now() - ctx.store.get().progress.lastSeenAt;
     if (away >= NAP.afterAwayMs) this.brain = nap(this.brain, ctx.clock.now(), Math.random);
     this.syncView();
+    for (const prop of BALANCE.character.playProps) {
+      const spot = TOY_SPOTS[prop];
+      this.toys.set(prop, new ToyView(scene, prop, point(spot.u, spot.t)));
+    }
 
     const c = this.view.container;
     c.on('pointerdown', () => this.stroke());
@@ -89,11 +93,11 @@ export class MungchiController {
       if (delta > 0 && reason === 'first-pet-of-day') this.view.burstSparkles();
     });
     ctx.bus.on('dev:force-activity', ({ activity }) => this.forceActivity(activity));
-    // 앱을 나갔다 들어오면 장난감은 치워져 있고, 오래 나가 있었다면 자고 있다.
+    // 앱을 나갔다 들어오면 놀기는 멈추고(장난감은 그 자리에 남는다), 오래 나가 있었다면 자고 있다.
     ctx.bus.on('app:resumed', ({ awayMs }) => {
       if (this.brain.activity === 'play') this.brain = calmDown(this.brain, ctx.clock.now(), Math.random);
       this.syncView();
-      this.clearToys();
+      this.endPlay();
       if (awayMs >= NAP.afterAwayMs) this.napNow();
     });
     // 다이어리(책상)·조리(조리대)를 하는 동안 잠깐 존다. 지금은 자세히 보기 화면에 연결되어 있다.
@@ -110,12 +114,6 @@ export class MungchiController {
   private napNow(): void {
     this.brain = nap(this.brain, this.ctx.clock.now(), Math.random);
     this.syncView();
-  }
-
-  private clearToys(): void {
-    this.endPlay();
-    for (const toy of this.toys.values()) toy.destroy();
-    this.toys.clear();
   }
 
   /** 행동 비중 배율을 추가한다. 되돌리는 함수를 돌려준다. */

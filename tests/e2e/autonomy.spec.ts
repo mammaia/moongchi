@@ -125,29 +125,29 @@ test('개발자 패널에서 뭉치 행동을 바꿔 볼 수 있다', async ({ p
   expect(await api(page).activity()).toBe('play');
 });
 
-test('놀던 장난감은 놀기가 끝나도 방에 남는다', async ({ page }) => {
+test('양말과 휴지심은 처음부터 방바닥에 있고, 놀고 나도 그대로 남는다', async ({ page }) => {
   const errors = await open(page, { frozen: true });
   const m = api(page);
+  expect((await m.toys()).sort()).toEqual(['sock', 'tissue-roll']);
   await m.force('play');
   await page.waitForTimeout(1500);
-  expect((await m.toys()).length).toBe(1);
   await petOnce(page); // 놀기를 끊어도
   expect(await m.activity()).toBe('happy');
   await page.waitForTimeout(500);
-  expect((await m.toys()).length).toBe(1); // 장난감은 그대로
+  expect((await m.toys()).sort()).toEqual(['sock', 'tissue-roll']); // 장난감은 그대로
   expect(errors).toEqual([]);
 });
 
-test('앱을 나갔다 들어오면 장난감은 치워져 있고, 오래 나가 있었다면 자고 있다', async ({ page }) => {
+test('앱을 나갔다 들어와도 장난감은 남아 있고, 오래 나가 있었다면 자고 있다', async ({ page }) => {
   await open(page, { frozen: true });
   const m = api(page);
   await m.force('play');
   await page.waitForTimeout(800);
-  expect((await m.toys()).length).toBe(1);
   await m.resume(5_000); // 잠깐 나갔다 옴
-  expect(await m.toys()).toEqual([]);
+  expect((await m.toys()).sort()).toEqual(['sock', 'tissue-roll']);
   expect(await m.activity()).not.toBe('sleep');
   await m.resume(10 * 60_000); // 오래 나갔다 옴
+  expect((await m.toys()).sort()).toEqual(['sock', 'tissue-roll']);
   expect(await m.activity()).toBe('sleep');
   await petOnce(page);
   expect(await m.activity()).toBe('happy');
