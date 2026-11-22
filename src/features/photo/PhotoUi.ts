@@ -8,6 +8,9 @@ import { fitWidth, formatTakenAt, groupByDay, makePhotoId } from './rules';
 /** 지금 게임 화면(캔버스)만 그대로 찍어서 돌려준다. HTML로 된 버튼·스파클 표시는 들어가지 않는다. */
 export type CaptureFn = () => Promise<CanvasImageSource & { width: number; height: number }>;
 
+/** 게임 화면이 지금 브라우저 어디에 얼마만 하게 있는지, 그리고 찍히는 사진의 실제 크기 */
+export type ViewportFn = () => { rect: { left: number; top: number; width: number; height: number }; width: number; height: number };
+
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -27,9 +30,10 @@ function toBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
 }
 
 type Area = { sx: number; sy: number; sw: number; sh: number };
+type Encoded = { blob: Blob; width: number; height: number };
 
 /** 원본의 area 부분을 잘라 가로 maxWidth 이하의 JPEG로 만든다. */
-async function encode(source: CanvasImageSource, area: Area, maxWidth: number) {
+async function encode(source: CanvasImageSource, area: Area, maxWidth: number): Promise<Encoded> {
   const size = fitWidth(area.sw, area.sh, maxWidth);
   const canvas = document.createElement('canvas');
   canvas.width = size.width;
@@ -46,8 +50,10 @@ type Shot = CanvasImageSource & { width: number; height: number };
 interface Taken {
   shot: Shot;
   full: { blob: Blob; width: number; height: number };
-  /** 자르지 않았을 때 쓸 작은 사진 (미리 만들기 시작해 둔 것) */
-  fullThumb: Promise<{ blob: Blob; width: number; height: number }>;
+  /** 찍기 전에 고른 틀 (미리보기의 처음 자르기 틀) */
+  crop: CropRect;
+  /** 고른 틀 그대로 저장할 때 쓸 사진·작은 사진 (미리보기 동안 미리 만들어 둔 것) */
+  ready: Promise<{ image: Encoded; thumb: Encoded }>;
   takenAt: number;
   dayKey: string;
   activity?: string;
@@ -61,6 +67,9 @@ export class PhotoUi {
   private readonly bar: HTMLDivElement;
   private readonly flash: HTMLDivElement;
   private readonly preview: HTMLDivElement;
+  private readonly framing: HTMLDivElement;
+  /** 마지막으로 고른 찍기 틀 (다시 찍을 때 그대로 쓴다) */
+  private frame: CropRect = { ...PHOTO.frameDefault };
   private readonly album: HTMLDivElement;
   private readonly viewer: HTMLDivElement;
   private readonly toast: HTMLDivElement;
@@ -72,7 +81,12 @@ export class PhotoUi {
   private previewUrl: string | null = null;
   private viewerUrl: string | null = null;
 
-  constructor(root: HTMLElement, private readonly ctx: GameContext, private readonly capture: CaptureFn) {
+  constructor(
+    private readonly root: HTMLElement,
+    private readonly ctx: GameContext,
+    private readonly capture: CaptureFn,
+    private readonly viewport: ViewportFn,
+  ) {
     this.bar = el('div', 'photo-bar');
     const albumBtn = el('button', 'photo-btn album-btn');
     albumBtn.innerHTML = ICON_ALBUM;
@@ -83,20 +97,22 @@ export class PhotoUi {
     cameraBtn.innerHTML = ICON_CAMERA;
     cameraBtn.setAttribute('aria-label', '사진 찍기');
     cameraBtn.dataset.testid = 'camera';
-    cameraBtn.addEventListener('click', () => void this.shoot());
+    cameraBtn.addEventListener('click', () => this.openFraming());
     this.bar.append(albumBtn, cameraBtn);
 
     this.flash = el('div', 'photo-flash');
     this.preview = el('div', 'photo-overlay photo-preview');
     this.preview.dataset.testid = 'photo-preview';
+    this.framing = el('div', 'photo-framing');
+    this.framing.dataset.testid = 'photo-framing';
     this.album = el('div', 'photo-overlay album');
     this.album.dataset.testid = 'album';
     this.viewer = el('div', 'photo-overlay photo-viewer');
     this.viewer.dataset.testid = 'photo-viewer';
     this.toast = el('div', 'toast photo-toast');
     this.toast.dataset.testid = 'photo-toast';
-    for (const overlay of [this.preview, this.album, this.viewer]) overlay.hidden = true;
-    root.append(this.bar, this.flash, this.preview, this.album, this.viewer, this.toast);
+    for (const overlay of [this.framing, this.preview, this.album, this.viewer]) overlay.hidden = true;
+    root.append(this.bar, this.framing, this.flash, this.preview, this.album, this.viewer, this.toast);
 
     // 물건을 눌러 확대해 본 동안에는 카메라를 숨긴다. [가정]
     ctx.bus.on('hotspot:opened', () => this.bar.classList.add('hidden'));
@@ -106,8 +122,56 @@ export class PhotoUi {
 
   // ───────── 촬영 ─────────
 
-  async shoot(): Promise<void> {
+  /**
+   * 찍기 전 틀 고르기: 방 위에 틀이 뜨고, 틀을 맞춘 뒤 셔터를 누르면 그 부분만 찍힌다.
+   * 그동안 뭉치는 하던 행동을 계속한다 (자세를 바꾸지 않는다).
+   */
+  openFraming(): void {
     if (this.busy || this.bar.classList.contains('hidden')) return;
+    this.busy = true;
+    const view = this.viewport();
+    const cropper = new Cropper(null, view.width, view.height, this.frame, 'frame');
+    const place = () => {
+      const r = this.viewport().rect;
+      Object.assign(cropper.stage.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+    };
+    place();
+    window.addEventListener('resize', place);
+
+    const hint = el('p', 'framing-hint', PHOTO.frameHint);
+    const cancel = el('button', 'btn ghost', '취소');
+    cancel.dataset.testid = 'frame-cancel';
+    const whole = el('button', 'btn ghost', '전체');
+    whole.dataset.testid = 'frame-full';
+    whole.addEventListener('click', () => cropper.reset());
+    const shutter = el('button', 'shutter');
+    shutter.setAttribute('aria-label', '찍기');
+    shutter.dataset.testid = 'shutter';
+    const controls = el('div', 'framing-controls');
+    controls.append(cancel, shutter, whole);
+    this.framing.replaceChildren(cropper.stage, hint, controls);
+    this.framing.hidden = false;
+    this.root.classList.add('is-framing'); // 고르는 동안 다른 버튼·안내는 잠깐 숨긴다
+
+    const close = () => {
+      window.removeEventListener('resize', place);
+      this.root.classList.remove('is-framing');
+      this.framing.hidden = true;
+      this.framing.replaceChildren();
+    };
+    cancel.addEventListener('click', () => {
+      close();
+      this.busy = false;
+    });
+    shutter.addEventListener('click', () => {
+      this.frame = cropper.crop;
+      close();
+      void this.shoot(this.frame);
+    });
+  }
+
+  /** 지금 화면을 찍어 미리보기를 띄운다. crop = 찍기 전에 고른 틀 */
+  private async shoot(crop: CropRect): Promise<void> {
     this.busy = true;
     const takenAt = this.ctx.clock.now();
     const dayKey = this.ctx.clock.dayKey(takenAt);
@@ -115,17 +179,23 @@ export class PhotoUi {
     try {
       const shot = await this.capture();
       this.playFlash();
-      const whole = { sx: 0, sy: 0, sw: shot.width, sh: shot.height };
-      const full = await encode(shot, whole, shot.width);
-      // 자르지 않고 저장할 때가 많으니, 미리보기를 보는 동안 작은 사진도 미리 만들어 둔다 (저장이 빨라진다)
-      const fullThumb = encode(shot, whole, PHOTO.thumbWidth);
-      fullThumb.catch(() => undefined);
-      this.showPreview({ shot, full, fullThumb, takenAt, dayKey, activity });
+      const full = await encode(shot, { sx: 0, sy: 0, sw: shot.width, sh: shot.height }, shot.width);
+      // 고른 틀 그대로 저장할 때가 많으니, 미리보기를 보는 동안 미리 만들어 둔다 (저장이 빨라진다)
+      const ready = this.encodeCrop(shot, full, crop);
+      ready.catch(() => undefined);
+      this.showPreview({ shot, full, crop, ready, takenAt, dayKey, activity });
     } catch (error) {
       console.error('[photo] 촬영 실패', error);
       this.showToast('사진을 찍지 못했어요. 다시 해 볼까요?');
       this.busy = false;
     }
+  }
+
+  private async encodeCrop(shot: Taken['shot'], full: Encoded, crop: CropRect) {
+    if (isFullCrop(crop)) return { image: full, thumb: await encode(shot, { sx: 0, sy: 0, sw: shot.width, sh: shot.height }, PHOTO.thumbWidth) };
+    const area = cropToPixels(crop, shot.width, shot.height);
+    const [image, thumb] = await Promise.all([encode(shot, area, area.sw), encode(shot, area, PHOTO.thumbWidth)]);
+    return { image, thumb };
   }
 
   private playFlash(): void {
@@ -135,13 +205,10 @@ export class PhotoUi {
     this.flash.classList.add('go');
   }
 
-  /** 찍은 사진과 자르기 틀로 저장할 사진을 만든다. 틀이 전체면 이미 만든 원본을 그대로 쓴다. */
+  /** 찍은 사진과 자르기 틀로 저장할 사진을 만든다. 틀을 안 바꿨으면 미리 만들어 둔 것을 쓴다. */
   private async buildPhoto(taken: Taken, crop: CropRect): Promise<PhotoRecord> {
-    const { shot, full } = taken;
-    const area = cropToPixels(crop, shot.width, shot.height);
-    const whole = isFullCrop(crop);
-    const image = whole ? full : await encode(shot, area, area.sw);
-    const thumb = whole ? await taken.fullThumb : await encode(shot, area, PHOTO.thumbWidth);
+    const same = JSON.stringify(crop) === JSON.stringify(taken.crop);
+    const { image, thumb } = await (same ? taken.ready : this.encodeCrop(taken.shot, taken.full, crop));
     return {
       v: PHOTO_RECORD_VERSION,
       id: makePhotoId(taken.takenAt),
@@ -158,7 +225,7 @@ export class PhotoUi {
   private showPreview(taken: Taken): void {
     this.previewUrl = URL.createObjectURL(taken.full.blob);
     const frame = el('div', 'photo-frame');
-    const cropper = new Cropper(this.previewUrl, taken.shot.width, taken.shot.height);
+    const cropper = new Cropper(this.previewUrl, taken.shot.width, taken.shot.height, taken.crop);
     frame.append(cropper.stage);
     const hint = el('p', 'photo-hint', PHOTO.cropHint);
     const date = el('p', 'photo-date', formatTakenAt(taken.dayKey, taken.takenAt));
@@ -180,7 +247,11 @@ export class PhotoUi {
     cropper.onChange = syncReset;
     syncReset();
 
-    retake.addEventListener('click', () => this.closePreview());
+    // 다시 찍기: 이 사진은 버리고 같은 틀로 찍기 화면에 돌아간다 [가정]
+    retake.addEventListener('click', () => {
+      this.closePreview();
+      this.openFraming();
+    });
     save.addEventListener('click', async () => {
       save.disabled = retake.disabled = true;
       try {

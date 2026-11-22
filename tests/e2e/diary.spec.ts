@@ -51,6 +51,8 @@ async function openDiary(page: Page) {
 
 async function shootAndSave(page: Page) {
   await page.getByTestId('camera').tap();
+  await page.getByTestId('frame-full').tap(); // 방 전체를 찍는다
+  await page.getByTestId('shutter').tap();
   await expect(page.getByTestId('photo-preview')).toBeVisible();
   await page.getByTestId('photo-save').tap();
   await expect(page.getByTestId('photo-preview')).toBeHidden();

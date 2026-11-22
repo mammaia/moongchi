@@ -16,10 +16,19 @@ async function open(page: Page, query = '') {
   await page.waitForFunction(() => (window.__moongchi as Api | undefined)?.ready());
   return errors;
 }
+/** 카메라 → 찍을 부분을 '전체'로 → 셔터 (방 전체를 찍는다) */
+async function shootFull(page: Page, tap = false) {
+  for (const id of ['camera', 'frame-full', 'shutter']) {
+    const target = page.getByTestId(id);
+    await (tap ? target.tap() : target.click());
+  }
+}
+const photoSizes = (page: Page) =>
+  page.evaluate(() => (window.__moongchi as unknown as { photoSizes: () => Promise<number[][]> }).photoSizes());
 const photoCount = (page: Page) => page.evaluate(() => (window.__moongchi as Api).photoCount());
 
 async function shootAndSave(page: Page) {
-  await page.getByTestId('camera').click();
+  await shootFull(page);
   await expect(page.getByTestId('photo-preview')).toBeVisible();
   await page.getByTestId('photo-save').click();
   await expect(page.getByTestId('photo-preview')).toBeHidden();
@@ -27,7 +36,7 @@ async function shootAndSave(page: Page) {
 
 test('카메라로 찍으면 미리보기에 사진과 찍은 날짜·시간이 나온다', async ({ page }) => {
   const errors = await open(page);
-  await page.getByTestId('camera').click();
+  await shootFull(page);
   const preview = page.getByTestId('photo-preview');
   await expect(preview).toBeVisible();
   const img = preview.locator('img');
@@ -45,16 +54,20 @@ test('사진을 찍어도 뭉치가 하던 행동은 그대로다', async ({ pag
   await open(page, '?dev=1');
   await page.evaluate(() => (window.__moongchi as Api).freezeMungchi(true));
   const before = await page.evaluate(() => (window.__moongchi as Api).activity());
-  await page.getByTestId('camera').click();
+  await shootFull(page);
   await expect(page.getByTestId('photo-preview')).toBeVisible();
   expect(await page.evaluate(() => (window.__moongchi as Api).activity())).toBe(before);
 });
 
-test('다시 찍기를 누르면 저장하지 않고 방으로 돌아간다', async ({ page }) => {
+test('다시 찍기를 누르면 저장하지 않고 찍기 화면으로, 취소하면 방으로 돌아간다', async ({ page }) => {
   await open(page);
-  await page.getByTestId('camera').click();
+  await shootFull(page);
   await page.getByTestId('photo-retake').click();
   await expect(page.getByTestId('photo-preview')).toBeHidden();
+  // 같은 틀로 찍기 화면에 돌아가고, 취소하면 방으로
+  await expect(page.getByTestId('photo-framing')).toBeVisible();
+  await page.getByTestId('frame-cancel').click();
+  await expect(page.getByTestId('photo-framing')).toBeHidden();
   expect(await photoCount(page)).toBe(0);
   await expect(page.getByTestId('camera')).toBeVisible();
 });
@@ -140,7 +153,7 @@ test('카메라·앨범 버튼이 방 물건을 누르는 자리를 가리지 �
 
 test('미리보기에서 모서리를 끌어 일부만 잘라 저장할 수 있다', async ({ page }) => {
   const errors = await open(page);
-  await page.getByTestId('camera').click();
+  await shootFull(page);
   await expect(page.getByTestId('photo-preview')).toBeVisible();
   const stage = (await page.getByTestId('crop-stage').boundingBox())!;
   await expect(page.getByTestId('crop-reset')).toBeHidden(); // 처음에는 전체
@@ -190,7 +203,7 @@ test('미리보기에서 모서리를 끌어 일부만 잘라 저장할 수 있�
 
 test('전체로 버튼을 누르면 자르기가 취소되고 원본 크기로 저장된다', async ({ page }) => {
   await open(page);
-  await page.getByTestId('camera').click();
+  await shootFull(page);
   const h = (await page.getByTestId('crop-se').boundingBox())!;
   await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
   await page.mouse.down();
@@ -202,4 +215,55 @@ test('전체로 버튼을 누르면 자르기가 취소되고 원본 크기로 �
   await expect(page.getByTestId('photo-preview')).toBeHidden();
   const sizes = await page.evaluate(() => (window.__moongchi as { photoSizes: () => Promise<number[][]> }).photoSizes());
   expect(sizes).toEqual([[780, 1400]]);
+});
+
+test('찍기 전에 틀로 고른 부분만 찍힌다 (방 위에 틀, 셔터)', async ({ page }) => {
+  const errors = await open(page);
+  await page.evaluate(() => (window.__moongchi as Api).freezeMungchi(true));
+  const before = await page.evaluate(() => (window.__moongchi as Api).activity());
+  await page.getByTestId('camera').click();
+  const framing = page.getByTestId('photo-framing');
+  await expect(framing).toBeVisible();
+
+  // 틀은 게임 화면(캔버스) 위에 정확히 겹쳐 있다
+  const canvas = (await page.locator('canvas').boundingBox())!;
+  const stage = (await page.getByTestId('frame-stage').boundingBox())!;
+  expect(Math.abs(stage.x - canvas.x)).toBeLessThan(2);
+  expect(Math.abs(stage.width - canvas.width)).toBeLessThan(2);
+
+  // 모서리를 끌어 조금 더 줄인다
+  const h = (await page.getByTestId('frame-se').boundingBox())!;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x + h.width / 2 - stage.width * 0.16, h.y + h.height / 2 - stage.height * 0.1, { steps: 4 });
+  await page.mouse.up();
+  const box = (await page.getByTestId('frame-box').boundingBox())!;
+
+  await page.getByTestId('shutter').click();
+  await expect(framing).toBeHidden();
+  await expect(page.getByTestId('photo-preview')).toBeVisible();
+  // 미리보기의 자르기 틀이 고른 틀에서 시작한다 (전체로 되돌릴 수도 있다)
+  await expect(page.getByTestId('crop-reset')).toBeVisible();
+  expect(await page.evaluate(() => (window.__moongchi as Api).activity())).toBe(before);
+
+  await page.getByTestId('photo-save').click();
+  await expect(page.getByTestId('photo-preview')).toBeHidden();
+  const [[w, ht]] = await photoSizes(page);
+  // 고른 틀의 화면 비율 그대로 (원본 780x1400 기준)
+  expect(Math.abs(w - (box.width / stage.width) * 780)).toBeLessThan(12);
+  expect(Math.abs(ht - (box.height / stage.height) * 1400)).toBeLessThan(12);
+  expect(w).toBeLessThan(780);
+  expect(errors).toEqual([]);
+});
+
+test('찍기 화면에서 취소하면 아무것도 저장되지 않는다', async ({ page }) => {
+  await open(page);
+  await page.getByTestId('camera').click();
+  await page.getByTestId('frame-cancel').click();
+  await expect(page.getByTestId('photo-framing')).toBeHidden();
+  await expect(page.getByTestId('photo-preview')).toBeHidden();
+  expect(await photoCount(page)).toBe(0);
+  // 다시 카메라를 누르면 또 열린다
+  await page.getByTestId('camera').click();
+  await expect(page.getByTestId('photo-framing')).toBeVisible();
 });

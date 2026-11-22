@@ -11,26 +11,41 @@ export class Cropper {
   private rect: CropRect = { ...FULL_CROP };
   onChange?: () => void;
 
-  constructor(src: string, private readonly imageW: number, private readonly imageH: number) {
+  /**
+   * src가 없으면 그림 없이 틀만 그린다 (찍기 전에 방 위에 겹쳐서 영역 고르기).
+   * imageW·imageH = 자를 그림의 실제 크기 (최소 크기 계산용), initial = 처음 틀 위치,
+   * id = 화면 테스트용 이름 앞부분 ('crop' = 미리보기, 'frame' = 찍기 전 틀)
+   */
+  constructor(
+    src: string | null,
+    private readonly imageW: number,
+    private readonly imageH: number,
+    initial: CropRect = FULL_CROP,
+    id = 'crop',
+  ) {
+    this.rect = { ...initial };
     this.stage = document.createElement('div');
     this.stage.className = 'crop-stage';
-    this.stage.dataset.testid = 'crop-stage';
-    const img = document.createElement('img');
-    img.src = src;
-    img.alt = '방금 찍은 사진';
-    img.draggable = false;
+    this.stage.dataset.testid = `${id}-stage`;
     this.box = document.createElement('div');
     this.box.className = 'crop-box';
-    this.box.dataset.testid = 'crop-box';
+    this.box.dataset.testid = `${id}-box`;
     for (const corner of ['nw', 'ne', 'sw', 'se'] as Corner[]) {
       const handle = document.createElement('div');
       handle.className = `crop-handle ${corner}`;
-      handle.dataset.testid = `crop-${corner}`;
+      handle.dataset.testid = `${id}-${corner}`;
       handle.addEventListener('pointerdown', (e) => this.drag(e, corner));
       this.box.append(handle);
     }
     this.box.addEventListener('pointerdown', (e) => this.drag(e, 'move'));
-    this.stage.append(img, this.box);
+    if (src) {
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = '방금 찍은 사진';
+      img.draggable = false;
+      this.stage.append(img);
+    }
+    this.stage.append(this.box);
     this.render();
   }
 
@@ -38,8 +53,9 @@ export class Cropper {
     return { ...this.rect };
   }
 
-  reset(): void {
-    this.rect = { ...FULL_CROP };
+  /** 틀을 바꾼다 (기본: 사진 전체) */
+  reset(rect: CropRect = FULL_CROP): void {
+    this.rect = { ...rect };
     this.render();
   }
 
