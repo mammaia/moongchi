@@ -4,8 +4,8 @@ import type { PlayProp, Point } from './brain';
 
 /**
  * 방바닥에 놓인 장난감(휴지심, 양말). [임시 그림] 장난감 시스템이 생기면 교체.
- * 놀고 나도 그 자리에 남아 있고, 앱을 나갔다 들어오면 clear()로 치운다.
- * 저장하지 않으므로 새로고침해도 치워진다.
+ * 항상 방에 있고, 놀고 나면 옮겨진 자리에 남는다.
+ * 자리는 저장하지 않으므로 새로 켜면 처음 자리(data/room.ts TOY_SPOTS)로 돌아온다.
  */
 export class ToyView {
   readonly node: Phaser.GameObjects.Container;
@@ -24,9 +24,6 @@ export class ToyView {
     drawProp(this.art, prop);
     this.node = scene.add.container(at.x, at.y, [this.shadow, this.art]).setName(`toy-${prop}`);
     this.apply(0);
-    // 처음 나타날 때 통 하고 떨어진다
-    this.node.setAlpha(0);
-    scene.tweens.add({ targets: this.node, alpha: 1, duration: 160 });
   }
 
   get position(): Point {

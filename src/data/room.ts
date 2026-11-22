@@ -93,3 +93,13 @@ export const MUNGCHI_SPOTS = {
   bed: { approach: { u: 0.37, t: 0.4 }, on: { u: 0.24, t: 0.22, h: 0.1 } },
   desk: { approach: { u: 0.66, t: 0.22 }, hide: { u: 0.715, t: 0.07 }, peek: { u: 0.67, t: 0.08 } },
 } as const;
+
+/**
+ * 뭉치의 혼자 놀기 장난감이 처음 놓여 있는 바닥 자리 (바닥 좌표 u, t). [확정 2026-11-22] 양말과 휴지심은 항상 방바닥에 있다.
+ * 뭉치가 놀면서 옮긴 자리는 앱을 켜 둔 동안 그대로 남는다. [가정] 앱을 새로 켜면 이 자리로 돌아온다(저장하지 않음).
+ * 뭉치가 다니는 범위(MUNGCHI_FLOOR) 안에 둔다.
+ */
+export const TOY_SPOTS = {
+  sock: { u: 0.66, t: 0.72 },
+  'tissue-roll': { u: 0.42, t: 0.32 },
+} as const;

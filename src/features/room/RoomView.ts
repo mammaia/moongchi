@@ -41,6 +41,9 @@ const COLOR = {
   mat: 0xd9b7d9,
 } as const;
 
+/** 이름표는 가구(층별로 깊이 10~11)보다 위에 둬서 어떤 가구에도 가려지지 않게 한다. */
+const LABEL_DEPTH = 15;
+
 /** 점들을 감싸는 볼록 다각형 (물건 모양대로 누를 수 있게). */
 const hullOf = (pts: Pt[]): Pt[] => {
   const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
@@ -97,8 +100,9 @@ export class RoomView {
     this.drawBathroomDoor();
     this.drawBed();
     this.drawOnOwnLayer(point(0.6, 0.16).y, () => this.drawDesk());
-    this.drawCounter();
-    this.drawFridge();
+    // 조리대와 냉장고는 책상보다 현관 쪽에 있으므로 책상보다 앞에 그린다. (책상이 가리지 않게)
+    this.drawOnOwnLayer(point(0.9, 0.62).y, () => this.drawCounter());
+    this.drawOnOwnLayer(point(0.9, 0.9).y, () => this.drawFridge());
     this.drawEntrance();
   }
 
@@ -149,7 +153,7 @@ export class RoomView {
           resolution: 3,
         })
         .setOrigin(0.5)
-        .setDepth(2)
+        .setDepth(LABEL_DEPTH)
         .setData(PHOTO_HIDDEN_KEY, true); // 이름표는 UI라서 사진에는 안 나온다
       // 화면 가장자리에서 이름표가 잘리지 않게 안쪽으로 당긴다.
       const half = label.width / 2 + 4;
@@ -305,7 +309,8 @@ export class RoomView {
     }
     const seat = this.box(0.58, 0.65, 0.04, 0.12, 0.1, { top: COLOR.chair, front: 0xd99a74, side: 0xd99a74 }, 'left', 0.085);
     const back = this.box(0.575, 0.59, 0.045, 0.115, 0.2, { top: COLOR.chair, front: 0xd99a74, side: COLOR.chair }, 'left', 0.1);
-    this.register('desk', [...desk, ...bezel, ...seat, ...back]);
+    // 오른쪽 아래는 조리대에 가려지므로 대표 지점은 책상 위 노트.
+    this.register('desk', [...desk, ...bezel, ...seat, ...back], point(0.74, 0.08, H));
   }
 
   private drawCounter(): void {
@@ -351,7 +356,8 @@ export class RoomView {
     // [확정] 신발장 대신 1인 가구용 작은 냉장고. 오른쪽 벽에 반듯하게 붙이고 문은 화장실(왼쪽 벽) 쪽을 향한다.
     // 현관에서 보면 냉장고의 옆판(현관 쪽 면)이 크게 보이고, 문은 비스듬히 좁게 보인다.
     // 그래서 문 두께, 문 쪽으로 튀어나온 손잡이, 냉동/냉장칸 틈을 옆판 가장자리에 그려 냉장고로 보이게 한다.
-    const u0 = 0.8, u1 = 1.0, t0 = 0.66, t1 = 0.86, H = 0.3, base = 0.015, split = 0.21;
+    // 조리대가 가려지지 않게 조리대보다 조금 낮고(작은 냉장고), 조리대와 한 뼘 떨어진 현관 쪽에 둔다.
+    const u0 = 0.8, u1 = 1.0, t0 = 0.7, t1 = 0.9, H = 0.24, base = 0.015, split = 0.17;
     const pts = this.box(u0, u1, t0, t1, H, { top: COLOR.fridgeSide, front: COLOR.fridgeSide, side: COLOR.fridge }, 'left', base);
     // 바닥과 닿는 받침(앞쪽 옆판 아래 + 문 아래)
     this.poly([point(u0, t1, 0), point(u1, t1, 0), point(u1, t1, base), point(u0, t1, base)], COLOR.steelDark, 1, false);
@@ -369,7 +375,7 @@ export class RoomView {
     this.g.lineStyle(1, COLOR.line, 0.6).lineBetween(ga.x, ga.y, gb.x, gb.y);
     // 손잡이: 문 앞쪽(현관 쪽) 끝에서 화장실 쪽으로 튀어나온 막대
     const handleT = t1 - 0.03, out = 0.035;
-    for (const [h0, h1] of [[0.225, 0.275], [0.13, 0.19]] as const) {
+    for (const [h0, h1] of [[0.18, 0.22], [0.1, 0.15]] as const) {
       const bar = [point(u0 - out, handleT, h0), point(u0 - out, handleT, h1)];
       this.g.lineStyle(3, COLOR.steelDark, 1).lineBetween(bar[0].x, bar[0].y, bar[1].x, bar[1].y);
       for (const h of [h0, h1]) {
@@ -388,34 +394,34 @@ export class RoomView {
     // 옆판에 붙인 자석과 메모들 (냉장고임을 티내는 장식)
     const on = (u: number, h: number) => point(u, t1, h);
     // 노란 메모 + 분홍 동그라미 자석
-    const memo = on(0.87, 0.2);
+    const memo = on(0.87, 0.16);
     this.g.fillStyle(0xfbe7a1, 1).fillRect(memo.x - 7, memo.y - 9, 14, 15);
     this.g.lineStyle(1, 0xd9b45a, 0.8).lineBetween(memo.x - 4, memo.y - 2, memo.x + 4, memo.y - 2).lineBetween(memo.x - 4, memo.y + 2, memo.x + 3, memo.y + 2);
     this.g.fillStyle(0xf28aa5, 1).fillCircle(memo.x, memo.y - 9, 2.4);
     // 폴라로이드 사진 (하늘색 배경 + 하얀 동그라미) + 노란 자석
-    const photo = on(0.94, 0.23);
+    const photo = on(0.94, 0.185);
     this.g.fillStyle(COLOR.white, 1).fillRect(photo.x - 7, photo.y - 8, 14, 17);
     this.g.lineStyle(1, COLOR.line, 0.4).strokeRect(photo.x - 7, photo.y - 8, 14, 17);
     this.g.fillStyle(COLOR.sky, 1).fillRect(photo.x - 5, photo.y - 6, 10, 9);
     this.g.fillStyle(COLOR.white, 1).fillCircle(photo.x, photo.y - 1, 3);
     this.g.fillStyle(0xf2c14e, 1).fillCircle(photo.x, photo.y - 8, 2.2);
     // 하트 자석
-    const heart = on(0.95, 0.14);
+    const heart = on(0.95, 0.11);
     this.g.fillStyle(0xe8607a, 1).fillCircle(heart.x - 2, heart.y, 2.6).fillCircle(heart.x + 2, heart.y, 2.6);
     this.g.fillTriangle(heart.x - 4.5, heart.y + 1, heart.x + 4.5, heart.y + 1, heart.x, heart.y + 6);
     // 딸기 자석
-    const berry = on(0.86, 0.12);
+    const berry = on(0.86, 0.095);
     this.g.fillStyle(0xe8504f, 1).fillTriangle(berry.x - 4, berry.y - 2, berry.x + 4, berry.y - 2, berry.x, berry.y + 5);
     this.g.fillCircle(berry.x, berry.y - 2, 4);
     this.g.fillStyle(0x6fbf73, 1).fillTriangle(berry.x - 3, berry.y - 6, berry.x + 3, berry.y - 6, berry.x, berry.y - 3);
     // 작은 장보기 목록 + 초록 자석
-    const list = on(0.91, 0.08);
+    const list = on(0.91, 0.06);
     this.g.fillStyle(COLOR.white, 1).fillRect(list.x - 5, list.y - 7, 10, 13);
     this.g.lineStyle(1, COLOR.screen, 0.9);
     for (const dy of [-3, 0, 3]) this.g.lineBetween(list.x - 3, list.y + dy, list.x + 3, list.y + dy);
     this.g.fillStyle(0x6fbf73, 1).fillCircle(list.x, list.y - 7, 2);
-    const handlePts = [point(u0 - out, handleT, 0.13), point(u0 - out, handleT, 0.275)];
-    this.register('fridge', [...pts, ...handlePts], point(0.9, t1, 0.12));
+    const handlePts = [point(u0 - out, handleT, 0.1), point(u0 - out, handleT, 0.22)];
+    this.register('fridge', [...pts, ...handlePts], point(0.9, t1, 0.1));
   }
 
   private drawEntrance(): void {
