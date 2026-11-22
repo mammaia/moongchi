@@ -71,6 +71,12 @@ const photoImg = (page: Page) => page.getByTestId('diary-photo').locator('img');
 async function expectPhotoLoaded(page: Page) {
   await expect(page.getByTestId('diary-photo')).toHaveAttribute('data-state', 'photo');
   await expect.poll(() => photoImg(page).evaluate((i: HTMLImageElement) => i.complete && i.naturalWidth)).toBeGreaterThan(0);
+  // 사진 틀이 사진 비율에 맞아서 사진이 잘리지 않고 다 보인다
+  const [shown, natural] = await photoImg(page).evaluate((i: HTMLImageElement) => [
+    i.clientHeight / i.clientWidth,
+    i.naturalHeight / i.naturalWidth,
+  ]);
+  expect(Math.abs(shown - natural) / natural).toBeLessThan(0.04);
 }
 
 test('책상을 누르면 바인더 다이어리가 오늘 날짜로 열리고, 닫으면 방으로 돌아온다', async ({ page }) => {
@@ -97,6 +103,8 @@ test('책상을 누르면 바인더 다이어리가 오늘 날짜로 열리고, 
 });
 
 test('앨범 사진을 골라 붙이고 글을 쓰면, 새로고침해도 그대로 남고 고칠 수 있다', async ({ page }) => {
+  // 찍기·새로고침을 여러 번 하는 긴 흐름이라 느린 CI에서는 기본 60초가 모자란다.
+  test.setTimeout(150_000);
   const errors = await open(page);
   await shootAndSave(page);
   await shootAndSave(page);
@@ -156,6 +164,8 @@ test('글자 수는 100자까지만 써진다', async ({ page }) => {
 });
 
 test('날짜별 페이지를 화살표와 손가락으로 넘긴다', async ({ page }) => {
+  // 찍기·새로고침을 여러 번 하는 긴 흐름이라 느린 CI에서는 기본 60초가 모자란다.
+  test.setTimeout(150_000);
   const errors = await open(page, '?dev=1');
   await openDiary(page);
   await page.getByTestId('diary-caption').fill('첫째 날');
@@ -203,6 +213,8 @@ test('날짜별 페이지를 화살표와 손가락으로 넘긴다', async ({ p
 });
 
 test('앨범에서 원본 사진을 지워도 다이어리는 깨지지 않고, 글은 남고, 다른 사진을 고를 수 있다', async ({ page }) => {
+  // 찍기·새로고침을 여러 번 하는 긴 흐름이라 느린 CI에서는 기본 60초가 모자란다.
+  test.setTimeout(150_000);
   const errors = await open(page);
   await shootAndSave(page);
   await openDiary(page);

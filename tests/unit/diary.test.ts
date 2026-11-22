@@ -3,6 +3,7 @@ import { createEmptyDiary, readDiary } from '../../src/core/diarySchema';
 import { SAVE_VERSION, migrate } from '../../src/core/saveSchema';
 import { DIARY } from '../../src/data/diary';
 import {
+  fitPhotoBox,
   formatDiaryDate,
   groupForPicker,
   pageCaption,
@@ -22,6 +23,9 @@ const D: PageDefaults = {
   photoLayout: DIARY.photoLayout,
   captionLayout: DIARY.captionLayout,
   captionMaxLength: DIARY.captionMaxLength,
+  pageAspect: DIARY.pageAspect,
+  photoMax: DIARY.photoMax,
+  photoFrame: DIARY.photoFrame,
 };
 let n = 0;
 const id = () => `i${++n}`;
@@ -82,6 +86,41 @@ describe('다이어리 기록', () => {
         { dayKey: '2026-11-20', photoId: 'p-b' },
       ]),
     );
+  });
+});
+
+describe('사진 틀 크기 (잘린 사진도 다 보이게)', () => {
+  const imageRatio = (box: { w: number; h: number }) => {
+    const f = DIARY.photoFrame;
+    return ((box.h * DIARY.pageAspect - f.top - f.bottom) / (box.w - f.side * 2));
+  };
+
+  for (const [name, w, h] of [
+    ['세로 게임 화면', 780, 1400],
+    ['정사각형으로 자른 사진', 400, 400],
+    ['가로로 길게 자른 사진', 700, 200],
+    ['세로로 아주 길게 자른 사진', 160, 1400],
+  ] as const) {
+    it(`${name}: 틀 안 사진 칸이 사진과 같은 비율이고 최대 크기를 넘지 않는다`, () => {
+      const box = fitPhotoBox(w, h, 0.5, 0.11, D);
+      expect(imageRatio(box)).toBeCloseTo(h / w, 5);
+      expect(box.w).toBeLessThanOrEqual(DIARY.photoMax.w + 1e-9);
+      expect(box.h).toBeLessThanOrEqual(DIARY.photoMax.h + 1e-9);
+      expect(box.x + box.w / 2).toBeCloseTo(0.5);
+      expect(box.y).toBe(0.11);
+    });
+  }
+
+  it('사진을 바꾸면 새 사진 비율로 틀이 바뀌고, 가운데·윗변·기울기는 그대로', () => {
+    const diary = createEmptyDiary();
+    setPagePhoto(diary, '2026-11-20', 'p-1', 1, D, id, { width: 780, height: 1400 });
+    const before = { ...pagePhoto(diary.pages['2026-11-20'])!.layout };
+    setPagePhoto(diary, '2026-11-20', 'p-2', 2, D, id, { width: 400, height: 400 });
+    const after = pagePhoto(diary.pages['2026-11-20'])!.layout;
+    expect(after.x + after.w / 2).toBeCloseTo(before.x + before.w / 2);
+    expect(after.y).toBe(before.y);
+    expect(after.rot).toBe(before.rot);
+    expect(after.h).toBeLessThan(before.h);
   });
 });
 

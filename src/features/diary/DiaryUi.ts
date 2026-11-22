@@ -29,6 +29,9 @@ const DEFAULTS: PageDefaults = {
   photoLayout: DIARY.photoLayout,
   captionLayout: DIARY.captionLayout,
   captionMaxLength: DIARY.captionMaxLength,
+  pageAspect: DIARY.pageAspect,
+  photoMax: DIARY.photoMax,
+  photoFrame: DIARY.photoFrame,
 };
 
 /** 저장된 자리(페이지 비율)를 화면 위치로. 휴대폰 크기가 달라도 같은 모양. */
@@ -345,7 +348,7 @@ export class DiaryUi {
         img.alt = '';
         cell.append(img);
         cell.addEventListener('click', () => {
-          this.ctx.store.update((s) => setPagePhoto(s.diary, day, photo.id, this.ctx.clock.now(), DEFAULTS));
+          this.ctx.store.update((s) => setPagePhoto(s.diary, day, photo.id, this.ctx.clock.now(), DEFAULTS, undefined, photo));
           this.ctx.store.flush();
           this.ctx.bus.emit('diary:changed', { dayKey: day });
           this.closePicker();
