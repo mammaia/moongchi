@@ -4,7 +4,10 @@
  * 1) SAVE_VERSION을 올리고 2) migrations에 이전 버전 → 새 버전 변환을 추가한다.
  * 그래야 업데이트 후에도 기존 플레이어의 저장이 그대로 열린다.
  */
-export const SAVE_VERSION = 1;
+import { DIARY } from '../data/diary';
+import { createEmptyDiary, readDiary, type DiaryData } from './diarySchema';
+
+export const SAVE_VERSION = 2;
 
 export interface SaveData {
   version: typeof SAVE_VERSION;
@@ -16,6 +19,8 @@ export interface SaveData {
   character: { x: number | null; y: number | null };
   /** 주인: 진행 */
   progress: { createdAt: number; lastSeenAt: number };
+  /** 주인: 다이어리. 사진은 id만 적는다 (사진 자체는 사진 보관함에). */
+  diary: DiaryData;
 }
 
 export function createNewSave(now: number): SaveData {
@@ -25,12 +30,16 @@ export function createNewSave(now: number): SaveData {
     petting: { lastRewardDay: null, totalStrokes: 0 },
     character: { x: null, y: null },
     progress: { createdAt: now, lastSeenAt: now },
+    diary: createEmptyDiary(),
   };
 }
 
 /** 버전 n 저장을 n+1로 바꾸는 함수들. 예: migrations[1] = (v1) => v2 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const migrations: Record<number, (old: any) => any> = {};
+export const migrations: Record<number, (old: any) => any> = {
+  // 1 → 2: 다이어리 서랍이 생겼다. 기존 기록은 그대로, 빈 다이어리를 더한다.
+  1: (old) => ({ ...old, version: 2, diary: createEmptyDiary() }),
+};
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
@@ -70,5 +79,6 @@ export function migrate(raw: unknown, now: number): SaveData {
       createdAt: num(progress.createdAt, base.progress.createdAt),
       lastSeenAt: num(progress.lastSeenAt, base.progress.lastSeenAt),
     },
+    diary: readDiary(data.diary, DIARY.defaultPaper),
   };
 }

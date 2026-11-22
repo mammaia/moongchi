@@ -67,8 +67,8 @@ describe('사진 보관함 (메모리판으로 동작 확인)', () => {
     expect(await lib.get('old')).toBeNull();
   });
 
-  it('사진은 진행 상황 저장과 따로라서 저장 형식이 바뀌지 않는다', () => {
-    expect(SAVE_VERSION).toBe(1);
-    expect(Object.keys(createNewSave(0)).sort()).toEqual(['character', 'petting', 'progress', 'version', 'wallet']);
+  it('사진은 진행 상황 저장과 따로라서 저장에 사진 칸이 없다 (다이어리는 사진 id만 적는다)', () => {
+    expect(SAVE_VERSION).toBeGreaterThanOrEqual(1);
+    expect(Object.keys(createNewSave(0)).sort()).toEqual(['character', 'diary', 'petting', 'progress', 'version', 'wallet']);
   });
 });

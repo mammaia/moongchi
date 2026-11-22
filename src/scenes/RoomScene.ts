@@ -33,6 +33,11 @@ export class RoomScene extends Phaser.Scene {
     this.room = new RoomView(this);
     this.room.createHotspots((id) => this.openHotspot(id));
     this.mungchi = new MungchiController(this, this.ctx);
+    // 기능 화면(다이어리 등)을 닫으면 방으로 돌아온다.
+    const off = this.ctx.bus.on('hotspot:done', ({ id }) => {
+      if (this.zoomedOn === id) this.closeHotspot();
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, off);
   }
 
   update(_time: number, delta: number): void {
@@ -94,15 +99,17 @@ export class RoomScene extends Phaser.Scene {
     cam.pan(b.x + b.width / 2, b.y + b.height / 2 + 60, 450, 'Sine.easeInOut');
     cam.zoomTo(RENDER_SCALE * ZOOM_IN, 450, 'Sine.easeInOut');
     this.ctx.bus.emit('hotspot:opened', { id });
-    this.ui.openDetail(HOTSPOTS[id], () => this.closeHotspot());
+    // 기능 화면이 있는 물건은 그 기능이 화면을 연다. 없으면 설명 시트.
+    if (!HOTSPOTS[id].screen) this.ui.openDetail(HOTSPOTS[id], () => this.closeHotspot());
   }
 
   private closeHotspot(): void {
     if (!this.zoomedOn) return;
     const id = this.zoomedOn;
     const cam = this.cameras.main;
-    cam.pan(WORLD.width / 2, WORLD.height / 2, 400, 'Sine.easeInOut');
-    cam.zoomTo(RENDER_SCALE, 400, 'Sine.easeInOut');
+    // force: 확대 움직임이 아직 끝나기 전에 닫아도 확실히 원래대로 돌아오게 한다.
+    cam.pan(WORLD.width / 2, WORLD.height / 2, 400, 'Sine.easeInOut', true);
+    cam.zoomTo(RENDER_SCALE, 400, 'Sine.easeInOut', true);
     this.zoomedOn = null;
     this.busyUntil = this.time.now + 420;
     this.ctx.bus.emit('hotspot:closed', { id });
