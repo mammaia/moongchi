@@ -16,8 +16,10 @@ export type GameEvents = {
    * 방 화면이 듣고 확대를 풀며 'hotspot:closed'를 알린다.
    */
   'hotspot:done': { id: string };
-  /** 다이어리 페이지 기록이 바뀌었다 (사진 붙이기/떼기, 글 쓰기). */
+  /** 다이어리 페이지 기록이 바뀌었다 (사진·글·스티커·테이프 붙이기/옮기기/떼기, 속지 바꾸기). */
   'diary:changed': { dayKey: string };
+  /** 다이어리 페이지에 사진+글 기록을 마쳤다 (사진 1장 이상 + 글). 경제 기능이 듣고 하루 첫 기록 보상을 준다. */
+  'diary:entry-recorded': { dayKey: string };
   /**
    * 뭉치의 행동이 바뀌었다. 기억, 사진, 친밀도 같은 이후 기능이 듣고 쓸 수 있다.
    * settling = 행동 사이에 잠깐 멈춰 있는 중.
@@ -37,7 +39,7 @@ export type MungchiAutoActivity = 'idle' | 'wander' | 'play' | 'sleep' | 'climb'
 /** 스스로 하는 행동 + 사용자에 대한 반응(쓰다듬기에 좋아하기) */
 export type MungchiActivity = MungchiAutoActivity | 'happy';
 
-export type SparkleReason = 'first-pet-of-day' | 'dev';
+export type SparkleReason = 'first-pet-of-day' | 'first-diary-of-day' | 'dev';
 
 type Handler<P> = (payload: P) => void;
 

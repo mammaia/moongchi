@@ -7,7 +7,7 @@
 import { DIARY } from '../data/diary';
 import { createEmptyDiary, readDiary, type DiaryData } from './diarySchema';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface SaveData {
   version: typeof SAVE_VERSION;
@@ -21,6 +21,8 @@ export interface SaveData {
   progress: { createdAt: number; lastSeenAt: number };
   /** 주인: 다이어리. 사진은 id만 적는다 (사진 자체는 사진 보관함에). */
   diary: DiaryData;
+  /** 주인: 경제 (다이어리 하루 첫 기록 보상) */
+  diaryReward: { lastRewardDay: string | null };
 }
 
 export function createNewSave(now: number): SaveData {
@@ -31,6 +33,7 @@ export function createNewSave(now: number): SaveData {
     character: { x: null, y: null },
     progress: { createdAt: now, lastSeenAt: now },
     diary: createEmptyDiary(),
+    diaryReward: { lastRewardDay: null },
   };
 }
 
@@ -39,6 +42,9 @@ export function createNewSave(now: number): SaveData {
 export const migrations: Record<number, (old: any) => any> = {
   // 1 → 2: 다이어리 서랍이 생겼다. 기존 기록은 그대로, 빈 다이어리를 더한다.
   1: (old) => ({ ...old, version: 2, diary: createEmptyDiary() }),
+  // 2 → 3: 다이어리 v0.2 (꾸미기). 페이지 기록(사진·글과 자리)은 모양이 같아서 그대로 쓰고,
+  // 다이어리 첫 기록 보상 서랍을 더한다. 스티커·테이프는 새 종류라 옛 기록에는 없다.
+  2: (old) => ({ ...old, version: 3, diaryReward: { lastRewardDay: null } }),
 };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
@@ -66,6 +72,7 @@ export function migrate(raw: unknown, now: number): SaveData {
   const petting = isObject(data.petting) ? data.petting : {};
   const character = isObject(data.character) ? data.character : {};
   const progress = isObject(data.progress) ? data.progress : {};
+  const diaryReward = isObject(data.diaryReward) ? data.diaryReward : {};
 
   return {
     version: SAVE_VERSION,
@@ -80,5 +87,6 @@ export function migrate(raw: unknown, now: number): SaveData {
       lastSeenAt: num(progress.lastSeenAt, base.progress.lastSeenAt),
     },
     diary: readDiary(data.diary, DIARY.defaultPaper),
+    diaryReward: { lastRewardDay: typeof diaryReward.lastRewardDay === 'string' ? diaryReward.lastRewardDay : null },
   };
 }

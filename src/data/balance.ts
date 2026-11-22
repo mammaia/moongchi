@@ -9,6 +9,10 @@ export const BALANCE = {
     /** [가정] 문지르기를 몇 밀리초마다 한 번의 쓰다듬기로 셀지. */
     strokeCooldownMs: 450,
   },
+  diary: {
+    /** [확정] 하루 첫 사진+글 기록에만 스파클 보상 (사용자 요청 2026-11-22). [가정] 양 10은 임시값. */
+    firstEntryOfDaySparkle: 10,
+  },
   character: {
     /**
      * 자율 행동표. [가정] 아래 숫자는 모두 자연스러워 보이는지 보기 위한 임시값.

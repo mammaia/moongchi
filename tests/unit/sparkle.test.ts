@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createNewSave } from '../../src/core/saveSchema';
-import { applyStroke, isPetRewardAvailable } from '../../src/features/economy/sparkle';
+import { applyDiaryEntry, applyStroke, isDiaryRewardAvailable, isPetRewardAvailable } from '../../src/features/economy/sparkle';
 
 describe('쓰다듬기 보상 [확정: 하루 첫 쓰다듬기만]', () => {
   it('그날 첫 쓰다듬기에 스파클을 준다', () => {
@@ -24,5 +24,24 @@ describe('쓰다듬기 보상 [확정: 하루 첫 쓰다듬기만]', () => {
     expect(isPetRewardAvailable(s, '2026-11-21')).toBe(true);
     expect(applyStroke(s, '2026-11-21', 10)).toBe(10);
     expect(s.wallet.sparkle).toBe(20);
+  });
+});
+
+describe('다이어리 기록 보상 [확정: 하루 첫 사진+글 기록만]', () => {
+  it('그날 첫 기록에 스파클을 주고, 같은 날 두 번째부터는 주지 않는다', () => {
+    const s = createNewSave(0);
+    expect(isDiaryRewardAvailable(s, '2026-11-20')).toBe(true);
+    expect(applyDiaryEntry(s, '2026-11-20', 10)).toBe(10);
+    expect(applyDiaryEntry(s, '2026-11-20', 10)).toBe(0);
+    expect(s.wallet.sparkle).toBe(10);
+    expect(isDiaryRewardAvailable(s, '2026-11-20')).toBe(false);
+  });
+
+  it('쓰다듬기 보상과 따로 센다, 다음 날이면 다시 받는다', () => {
+    const s = createNewSave(0);
+    applyStroke(s, '2026-11-20', 10);
+    expect(applyDiaryEntry(s, '2026-11-20', 10)).toBe(10);
+    expect(applyDiaryEntry(s, '2026-11-21', 10)).toBe(10);
+    expect(s.wallet.sparkle).toBe(30);
   });
 });
